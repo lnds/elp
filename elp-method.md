@@ -1,19 +1,20 @@
 ---
-title: "ELP — Empirical Lane Parallelism"
-subtitle: "A method for human-orchestrated parallel multi-agent software engineering"
+title: "ELP: Empirical Lane Parallelism"
+subtitle: "Un método para ingeniería de software con múltiples agentes en paralelo, orquestados por humanos"
 author: "Eduardo Díaz Cortés"
-date: "2026-05-05"
-version: "0.1"
+date: "2026-05-13"
+version: "0.2"
 ---
 
-# ELP — Empirical Lane Parallelism
+# ELP: Empirical Lane Parallelism
 
-> *Un método para construir software con múltiples agentes IA trabajando en paralelo, bajo orquestación humana, con captura empírica del proceso.*
+> *Un método para construir software con múltiples agentes de IA trabajando en paralelo, bajo orquestación humana, con captura empírica del proceso.*
 
 ---
 
 > *"Welcome back, my friends, to the show that never ends."*
-> — Emerson, Lake & Palmer, *Karn Evil 9: First Impression Part 2*, 1973.
+>
+> Emerson, Lake & Palmer, *Karn Evil 9: First Impression Part 2*, 1973.
 
 ---
 
@@ -21,120 +22,175 @@ version: "0.1"
 
 **ELP** (*Empirical Lane Parallelism*) es un método de ingeniería de software que combina tres ideas:
 
-1. **Lanes paralelas:** cada unidad de trabajo se ejecuta como una sesión aislada (un *git worktree*, una rama propia, una sesión `tmux` propia). Múltiples lanes corren en paralelo.
-2. **Brief como contrato:** cada lane recibe un documento estructurado que define su scope, decisiones ya tomadas, qué hacer y qué no, y qué entregar.
-3. **Captura empírica del proceso:** auditorías previas al código, retrospectivas obligatorias por lane y mediciones de cada build se conservan como dataset que alimenta a las siguientes lanes.
+1. **Lanes paralelas.** Cada unidad de trabajo se ejecuta como una sesión aislada: un *git worktree*, una rama propia, una sesión `tmux` propia. Varias lanes corren en paralelo.
+2. **Brief como contrato.** Cada lane recibe un documento estructurado que define su alcance, las decisiones ya tomadas, qué hacer y qué no, y qué entregar.
+3. **Captura empírica del proceso.** Auditorías previas al código, retrospectivas obligatorias por lane y mediciones de cada compilación se conservan como conjunto de datos que alimenta a las lanes siguientes.
 
-ELP no reemplaza a los métodos clásicos de desarrollo, los complementa con un patrón explícito para coordinar a múltiples agentes sin que el sistema se degrade en semanas.
+ELP no reemplaza a los métodos clásicos de desarrollo, los complementa con un patrón explícito para coordinar a varios agentes sin que el sistema se degrade en pocas semanas.
+
+El método se probó empíricamente en proyectos *greenfield*, es decir, proyectos nuevos, sin código heredado, que parten con visión de producto y diseño general definidos pero sin implementación previa. ELP se extiende de forma natural a proyectos con visión de producto y un *backlog* bien definido, aunque la práctica sostenida fuera del caso *greenfield* queda como trabajo futuro.
 
 ---
 
 ## 1. Motivación
 
-Trabajar con asistentes IA en una sola conversación funciona bien para tareas pequeñas. A medida que el proyecto crece, el patrón se rompe:
+Trabajar con asistentes de IA en una sola conversación funciona bien para tareas pequeñas. A medida que el proyecto crece, el patrón se rompe:
 
-- El **contexto se llena**: el agente pierde detalles relevantes que estaban al inicio.
+- El **contexto se llena**. El agente pierde detalles relevantes que estaban al inicio.
 - Los **cambios se pisan** entre sí cuando varias tareas se intercalan.
 - **No queda registro** de lo que se intentó y por qué se descartó.
-- **Cada conversación empieza desde cero**, sin acceso al aprendizaje previo.
+- **Cada conversación parte de cero**, sin acceso al aprendizaje previo.
 
-Los métodos del espectro actual (vibe coding, Pantser, SDD, SPDD, BMAD) no ofrecen una respuesta operativa al problema cuando se combina con escala (decenas de PRs por día) y duración (proyecto de meses). ELP apunta a llenar ese hueco.
+Los métodos del espectro actual (*vibe coding*, *Pantser*, SDD, SPDD, BMAD) no ofrecen una respuesta operativa al problema cuando se combinan con escala (decenas de PRs por día) y con duración (proyectos de varios meses). ELP apunta a llenar ese vacío.
 
 ---
 
 ## 2. Definiciones
 
-**Lane.** Unidad de trabajo paralelizable, vinculada a un único issue del backlog. Cada lane se materializa en un *git worktree* con su rama, su brief y su sesión `tmux`. El agente que ejecuta una lane corre en **modo autónomo** (en Claude: *auto mode on*): ejecuta el brief de principio a fin sin pausas para confirmación, salvo en los puntos de STOP-and-report explícitamente declarados.
+**Lane.** Unidad de trabajo paralelizable, asociada a un único item del *backlog* (típicamente una tarjeta de un tablero Kanban o un *issue* de GitHub). Cada lane se materializa en un *git worktree* con su rama, su brief y su sesión `tmux`. El agente que ejecuta una lane corre en **modo autónomo** (en Claude, esto corresponde a *auto mode on*): ejecuta el brief de principio a fin sin pausas para pedir confirmación, salvo en los puntos de *STOP-and-report* declarados explícitamente.
 
-**Brief.** Documento estructurado que define el contrato de la lane. Es el input del agente que ejecuta la lane.
+**Brief.** Documento estructurado que define el contrato de la lane. Es la entrada del agente que ejecuta la lane. El nombre viene de *briefing*: antes del lanzamiento, el arquitecto y el integrador realizan un *briefing*, una puesta en común explícita, y el documento resultante es lo que recibe el agente como contrato. El brief **complementa** al item del *backlog* (que captura el *qué* funcional) con instrucciones tácticas (el *cómo* operativo para esa ejecución concreta).
 
-**Integrador.** Agente IA con sesión interactiva que mantiene el contexto compartido con el humano, lee el state del repo, escribe los briefs, lanza las lanes y monitorea su progreso. No toca código directamente.
+**Kanban.** Tablero (físico o digital) donde el arquitecto gestiona las iniciativas, hace *triage* de prioridades y decide qué se aborda en la próxima lane. ELP no prescribe la herramienta específica. En la práctica inicial se usaron *issues* de GitHub como sustituto funcional. Lo importante es que exista un lugar único y consultable donde el *qué construir* viva separado del *cómo construir* (que vive en el brief).
 
-**Arquitecto.** El humano. Decide scope, sequencing, mergea PRs, autoriza acciones irreversibles, corrige cuando el integrador o las lanes se equivocan.
+**Integrador.** Agente de IA con sesión interactiva que mantiene el contexto compartido con el humano, lee el estado del repositorio, escribe los briefs, lanza las lanes y monitorea su progreso. No toca código directamente.
 
-**Audit (Phase 0).** Lane *doc-only* que valida la premisa de un milestone con datos antes de escribir código. Puede descartar la propuesta entera.
+**Arquitecto.** El humano. Decide el alcance, el orden de las lanes, integra los PRs, autoriza acciones irreversibles y corrige cuando el integrador o las lanes se equivocan.
 
-**Lane retro.** Documento que cada lane escribe **antes** de abrir el PR, con métricas, errores encontrados, ambigüedades de spec y *friction points*.
+**Auditoría (*Phase 0*).** Lane puramente documental que valida la premisa de un hito con datos antes de escribir código. Puede descartar la propuesta completa.
 
-**TSV de builds.** Archivo *tab-separated* donde cada invocación a build/test queda registrada con timestamp, comando, outcome y elapsed.
+**Lane retro.** Documento que cada lane escribe **antes** de abrir el PR, con métricas, errores encontrados, ambigüedades de la especificación y puntos de fricción.
 
-**STOP-and-report.** Comportamiento del agente lane cuando encuentra una situación fuera de su scope: se detiene y reporta, no improvisa.
+**TSV de compilaciones.** Archivo separado por tabuladores donde cada invocación a *build* o *test* queda registrada con marca de tiempo, comando, resultado y duración.
+
+***STOP-and-report*.** Comportamiento del agente lane cuando encuentra una situación fuera de su alcance: se detiene y reporta, no improvisa.
 
 ---
 
-## 3. Roles
+## 3. Punto de partida del proyecto
+
+ELP no parte del vacío. Asume condiciones iniciales explícitas, sin las cuales el método no se sostiene. El alcance probado empíricamente es **greenfield**. La extensión a proyectos con *backlog* preexistente es natural, pero exige las mismas precondiciones.
+
+### 3.1 Documentación previa
+
+El proyecto arranca con un cuerpo mínimo de documentación que el integrador puede leer y que sirve como fuente compartida para escribir los briefs. Típicamente incluye:
+
+- **Visión de producto.** Qué se va a construir, para quién y qué problema resuelve.
+- **Diseño general o arquitectura objetivo.** Componentes principales, lenguaje, plataforma de ejecución, decisiones tecnológicas.
+- **Ejemplos y prototipos.** Fragmentos de la sintaxis objetivo, maquetas de interfaz, un *spike* sobre una pieza crítica, repositorios de referencia.
+- **Glosario o modelo de dominio.** Términos del problema y cómo se relacionan entre sí.
+
+La calidad de los briefs es función directa de esta documentación. Sin una visión escrita, el integrador inventa el alcance. Sin un diseño general, las lanes derivan en direcciones incompatibles.
+
+### 3.2 Principios fijados
+
+Antes de la primera lane se establecen, idealmente por escrito en el repositorio (`docs/principles.md` o equivalente):
+
+- **Principios arquitectónicos.** Invariantes que ninguna lane puede romper. Por ejemplo, *"selfhost byte-identical en cada PR"*, *"sin dependencias de ejecución en X"*, *"toda función observable debe estar instrumentada"*.
+- **Principios de negocio** (cuando aplican). Qué prioriza el producto en caso de compensación. Por ejemplo, *"latencia sobre rendimiento"*, *"compatibilidad heredada sobre velocidad de lanzamiento"*.
+- **Restricciones de tiempo.** Metas y fechas de lanzamiento, hoja de ruta de versiones, ventanas de congelamiento e hitos externos comprometidos.
+
+Los principios funcionan como axiomas del flujo. El brief los cita, no los discute de nuevo. Cambiar un principio es una decisión consciente del arquitecto, no algo que una lane pueda hacer al pasar.
+
+### 3.3 Backlog gestionado en Kanban
+
+El *qué construir* vive en un **tablero Kanban** que el arquitecto usa para gestionar las iniciativas y hacer el *triage* de qué se aborda a continuación. ELP no prescribe la herramienta concreta. Puede ser un tablero dedicado (Linear, Jira, Trello, GitHub Projects) o el conjunto de *issues* de GitHub como sustituto funcional (la implementación inicial de ELP usó este último).
+
+Lo importante es que el tablero cumpla tres funciones:
+
+1. **Inventario.** Cada item es una unidad candidata a convertirse en lane.
+2. **Priorización.** El arquitecto ordena, agrupa y descarta items. El integrador lee ese orden.
+3. **Trazabilidad.** Cada brief, retro y PR referencia al item del Kanban del que proviene.
+
+El brief **complementa** al item del Kanban. El item captura el *qué* funcional, con el detalle que el arquitecto considere necesario, y el brief añade el *cómo* táctico (decisiones fijadas, archivos a tocar, alcance explícito) como resultado del *briefing* entre arquitecto, integrador y agente lane.
+
+### 3.4 Greenfield versus proyectos con backlog preexistente
+
+| Dimensión | Greenfield (probado) | Con backlog preexistente (extensión natural) |
+|---|---|---|
+| Código de partida | ninguno o *spike* inicial | base existente con convenciones |
+| Visión de producto | recién escrita | madura, posiblemente versionada |
+| Principios arquitectónicos | se establecen al inicio | se documentan extrayéndolos del código |
+| Tablero Kanban | nuevo, se va llenando | preexistente, con deuda y prioridades dadas |
+| Riesgo principal | derivar sin guías | imponer ELP sobre un flujo que ya funciona |
+
+La extensión a proyectos que no son *greenfield* requiere un paso previo: **explicitar lo que está implícito** (principios, convenciones, contratos no escritos) para que los briefs los puedan citar.
+
+---
+
+## 4. Roles
 
 ELP define tres roles con responsabilidades claras y no superpuestas.
 
-### 3.1 Arquitecto (humano)
+### 4.1 Arquitecto (humano)
 
 Responsabilidades:
 
-- Decidir scope de cada milestone y sequencing entre lanes.
-- Aprobar o rechazar PRs (o habilitar auto-merge bajo condiciones).
-- Autorizar explícitamente acciones irreversibles (force-push, cleanup destructivo, push a *main*).
+- Decidir el alcance de cada hito y el orden de ejecución entre lanes.
+- Aprobar o rechazar los PRs, o habilitar la integración automática bajo ciertas condiciones.
+- Autorizar de forma explícita las acciones irreversibles (*force push*, limpieza destructiva, *push* a *main*).
 - Corregir cuando el integrador o las lanes se equivocan.
 - Tomar la decisión final cuando hay desacuerdo.
 
-Lo que **no** hace típicamente:
+Lo que **no** hace habitualmente:
 
 - Escribir código línea por línea.
-- Re-discutir decisiones ya pinneadas en briefs.
+- Volver a discutir decisiones ya fijadas en los briefs.
 - Aprobar PRs sin que la retro de la lane esté escrita.
 
-### 3.2 Integrador (agente IA, sesión interactiva)
+### 4.2 Integrador (agente de IA, sesión interactiva)
 
 Responsabilidades:
 
-- Mantener el contexto compartido del proyecto, leyendo state del repo (issues, PRs, retros previas, audits).
+- Mantener el contexto compartido del proyecto, leyendo el estado del repositorio (*issues*, PRs, retros previas, auditorías).
 - Escribir briefs detallados antes de lanzar cada lane.
-- Lanzar agentes lane (en sesiones `tmux` separadas con su worktree).
-- Monitorear progreso vía `tmux capture-pane` y *wakeup scheduling*.
-- Reportar hallazgos críticos al humano.
+- Lanzar a los agentes lane en sesiones `tmux` separadas, cada una con su *worktree*.
+- Monitorear el progreso usando `tmux capture-pane` y la programación de *wakeups*.
+- Reportar los hallazgos críticos al humano.
 
 Lo que **no** hace:
 
-- Tocar código de la lane directamente.
+- Tocar el código de la lane directamente.
 - Tomar decisiones irreversibles sin autorización del humano.
-- Cleanup de worktrees o sesiones sin autorización explícita.
+- Limpiar *worktrees* o sesiones sin autorización explícita.
 
-### 3.3 Lane (agente IA, sesión aislada, modo autónomo)
+### 4.3 Lane (agente de IA, sesión aislada, modo autónomo)
 
-El agente lane corre en **modo autónomo de principio a fin**. En el caso de Claude, esto corresponde a operar con *auto mode on*: el agente no pide confirmación interactiva entre pasos del brief, ejecuta toda la cadena (explorar, diagnosticar, implementar, validar, retro, commit, push, PR) y solo se detiene en los puntos de STOP-and-report declarados explícitamente en el brief, o cuando una acción irreversible requiere autorización (ver §8).
+El agente lane corre en **modo autónomo de principio a fin**. En el caso de Claude, esto corresponde a operar con *auto mode on*. El agente no pide confirmación interactiva entre pasos del brief, ejecuta toda la cadena (explorar, diagnosticar, implementar, validar, escribir la retro, hacer *commit*, *push* y abrir el PR) y solo se detiene en los puntos de *STOP-and-report* declarados explícitamente en el brief, o cuando una acción irreversible requiere autorización (ver §9).
 
-La autonomía es lo que hace viable la ejecución paralela: un humano no puede babysittear N lanes a la vez. El brief reemplaza al *babysitting* — por eso su calidad es el techo de la calidad de la lane.
+La autonomía es lo que hace viable la ejecución paralela. Un humano no puede supervisar N lanes a la vez. El brief reemplaza a la supervisión continua. Por eso su calidad es el techo de la calidad de la lane.
 
 Responsabilidades:
 
-- Recibir un brief al arrancar, leerlo completo antes de actuar.
-- Trabajar en su worktree aislado (rama propia).
-- Ejecutar el flujo: *explorar → diagnosticar → implementar → validar → retro → commit → push → abrir PR*, sin pausas para confirmación.
-- Habilitar auto-merge cuando CI verde es esperable.
-- Hacer **STOP-and-report** ante ambigüedades de diseño que excedan su brief.
+- Recibir un brief al arrancar y leerlo completo antes de actuar.
+- Trabajar en su *worktree* aislado, sobre su propia rama.
+- Ejecutar el flujo *explorar, diagnosticar, implementar, validar, escribir la retro, hacer commit, push y abrir el PR* sin pausas para pedir confirmación.
+- Habilitar la integración automática cuando se espera que el CI termine en verde.
+- Hacer ***STOP-and-report*** ante ambigüedades de diseño que excedan su brief.
 
 Lo que **no** hace:
 
-- Improvisar decisiones de scope.
-- Tocar archivos fuera del scope declarado en el brief.
-- Cleanup de su propio worktree o sesión.
+- Improvisar decisiones de alcance.
+- Tocar archivos fuera del alcance declarado en el brief.
+- Limpiar su propio *worktree* o sesión.
 
 ---
 
-## 4. Anatomía de una lane
+## 5. Anatomía de una lane
 
-### 4.1 Estructura de archivos
+### 5.1 Estructura de archivos
 
 Cada lane vive en tres ubicaciones:
 
 ```
 /tmp/wt-claude-prompt-<issue>-<descr>.txt   # el brief
-/tmp/launch-<issue>.sh                      # wrapper que invoca al agente
+/tmp/launch-<issue>.sh                      # script que invoca al agente
 ~/work/<proyecto>.<issue>-<descr>/          # el worktree con su rama
 ```
 
 Una sesión `tmux` con nombre `<issue>-<descr>` ejecuta el agente.
 
-### 4.2 Lanzamiento
+### 5.2 Lanzamiento
 
 ```sh
 chmod +x /tmp/launch-NNN.sh
@@ -142,20 +198,20 @@ tmux new-session -d -s issue-NNN-descr \
     "wt switch --create issue-NNN-descr -x /tmp/launch-NNN.sh"
 ```
 
-`wt switch --create` crea worktree + rama, hace `cd` y ejecuta el wrapper. El wrapper hace `exec claude "$(cat brief)"` y arranca el agente con el brief como input inicial.
+`wt switch --create` crea el *worktree* junto con la rama, entra al directorio y ejecuta el script. Este invoca `exec claude "$(cat brief)"` y arranca al agente recibiendo el brief como entrada inicial.
 
-### 4.3 Monitoreo
+### 5.3 Monitoreo
 
 ```sh
 tmux list-sessions
 tmux capture-pane -t <session-name> -p | tail -30
 ```
 
-Si se necesita corregir trayectoria, se usa `tmux send-keys` para preservar el contexto que el agente ya tiene. **Re-briefear desde cero pierde el aprendizaje acumulado en la sesión.**
+Si hace falta corregir la trayectoria, se usa `tmux send-keys` para preservar el contexto que el agente ya tiene. **Volver a redactar el brief desde cero pierde el aprendizaje acumulado en la sesión.**
 
-### 4.4 Cleanup post-merge
+### 5.4 Limpieza posterior a la integración
 
-Solo después de que el PR de la lane mergeó:
+Solo después de que el PR de la lane se integró:
 
 ```sh
 tmux kill-session -t issue-NNN-descr
@@ -164,115 +220,116 @@ git branch -D issue-NNN-descr
 git pull --ff-only origin main
 ```
 
-**Regla pinneada:** el cleanup necesita autorización explícita del arquitecto. Cleanup prematuro ya destruyó contexto útil en la práctica.
+**Regla fijada:** la limpieza necesita autorización explícita del arquitecto. Una limpieza prematura ya ha destruido contexto útil en la práctica.
 
 ---
 
-## 5. El brief como contrato
+## 6. El brief como contrato
 
-El brief es la diferencia entre un agente que entrega un PR *review-ready* y uno que pierde tiempo. Estructura canónica:
+El brief es la diferencia entre un agente que entrega un PR listo para revisión y uno que pierde el tiempo. Es producto del *briefing* entre arquitecto, integrador y, en su forma final al lanzarse la lane, el agente que la ejecuta. Es una puesta en común explícita sobre qué se va a hacer, con qué decisiones ya cerradas y bajo qué restricciones. La estructura canónica es la siguiente:
 
-### 5.1 Goal
+### 6.1 Objetivo
 
-Una a tres frases. Qué se entrega y por qué importa ahora. Idealmente cita el número de issue.
+Una a tres frases. Qué se entrega y por qué importa ahora. Idealmente cita el número de *issue*.
 
-### 5.2 Context
+### 6.2 Contexto
 
-- Repo + branch (siempre `issue-NNN-descr` desde el `main` actual).
-- Verificación esperada (ej.: `git log --oneline -5 origin/main`).
-- Reglas pinneadas del proyecto (`CLAUDE.md`, archivos a no tocar).
-- Lanes paralelas en flight, para anticipar conflictos.
+- Repositorio y rama (siempre `issue-NNN-descr` desde el `main` actual).
+- Verificación esperada (por ejemplo, `git log --oneline -5 origin/main`).
+- Reglas fijadas del proyecto (`CLAUDE.md`, archivos que no se tocan).
+- Principios arquitectónicos y de negocio aplicables (ver §3.2).
+- Lanes paralelas en ejecución, para anticipar conflictos.
 
-### 5.3 Read first
+### 6.3 Lectura previa
 
 Lista de archivos que el agente debe leer antes de escribir código:
 
-- El issue completo.
-- El audit o design doc relevante, cuando exista.
+- El item del *backlog* (*issue* o tarjeta Kanban) completo.
+- La auditoría o el documento de diseño relevante, cuando exista.
 - Retros de lanes anteriores que comparten contexto.
-- Archivos específicos del código que la lane va a tocar.
+- Los archivos específicos del código que la lane va a tocar.
 
-### 5.4 Decisions pinned
+### 6.4 Decisiones fijadas
 
-Decisiones ya tomadas que el agente **no debe re-discutir**. Esta sección es crítica: la IA tiende a "mejorar" lo que ya estaba decidido. Ejemplos típicos:
+Decisiones ya tomadas que el agente **no debe discutir de nuevo**. Esta sección es crítica. La IA tiende a "mejorar" lo que ya estaba decidido. Ejemplos típicos:
 
-- *"No fix issue #219 en este lane."*
-- *"No tocar `CHANGELOG.md` ni `VERSION`, los regenera el bump al release."*
-- *"Smallest-delta wins: cambia lo mínimo para que pase."*
-- *"Diagnose before implementing: primer paso es entender la falla."*
+- *"No arreglar el issue #219 en esta lane."*
+- *"No tocar `CHANGELOG.md` ni `VERSION`. Los regenera el incremento al lanzar la versión."*
+- *"Cambia lo mínimo para que pase."*
+- *"Diagnosticar antes de implementar. El primer paso es entender la falla."*
 
-### 5.5 Lane scope (in / out)
+### 6.5 Alcance de la lane (dentro y fuera)
 
 Lista explícita de qué SÍ y qué NO hacer.
 
-`DO NOT` es tan importante como `DO`. El modelo está entrenado para ser útil; si no se le dice que pare, sigue. Casos típicos:
+Lo que NO se hace es tan importante como lo que SÍ. El modelo está entrenado para ser útil. Si no se le dice que pare, sigue. Casos típicos:
 
 - No tocar otros módulos.
 - No tocar archivos de versionamiento (`CHANGELOG`, `VERSION`).
-- No abrir issues nuevos para gaps adyacentes (separar scope).
-- STOP-and-report ante condiciones X.
+- No abrir *issues* nuevos para vacíos adyacentes (mantener el alcance separado).
+- *STOP-and-report* ante las condiciones X.
 
-### 5.6 Required outputs
+### 6.6 Salidas requeridas
 
-- Archivos modificados esperados.
-- Mensaje de commit en el formato del proyecto (típicamente *Conventional Commits*).
-- Body del PR con qué incluir.
+- Archivos modificados que se esperan.
+- Mensaje de *commit* en el formato del proyecto (típicamente *Conventional Commits*).
+- Cuerpo del PR con lo que debe incluir.
 - Comandos de cierre: `gh pr create`, `gh pr merge --auto`.
 
-### 5.7 Discipline reminders
+### 6.7 Recordatorios de disciplina
 
-- Tier de tests requeridos antes de push.
-- Working tree limpio en cada commit.
-- Auto-merge habilitado si corresponde.
+- Nivel de pruebas requerido antes de hacer *push*.
+- Árbol de trabajo limpio en cada *commit*.
+- Integración automática habilitada cuando corresponde.
 
-### 5.8 Instrumentation (obligatorio)
+### 6.8 Instrumentación (obligatoria)
 
-- Logging de builds en TSV.
-- Retro doc en `docs/lane-experience-<lane>.md` con secciones fijas (ver §6.2).
+- Registro de las compilaciones en formato TSV.
+- Documento de retro en `docs/lane-experience-<lane>.md` con secciones fijas (ver §7.2).
 
 ---
 
-## 6. Captura empírica
+## 7. Captura empírica
 
-Los métodos formales del espectro actual (SDD, SPDD, BMAD) producen artefactos. ELP **además mide el proceso**. Sin esto, el flujo se degrada en semanas.
+Los métodos formales del espectro actual (SDD, SPDD, BMAD) producen artefactos. ELP **además mide el proceso**. Sin esto, el flujo se degrada en pocas semanas.
 
-### 6.1 Phase 0 audits
+### 7.1 Auditorías de fase 0
 
-Cuando un milestone abarca varias zonas o asume una hipótesis no validada, se ejecuta una lane **doc-only** que valida la premisa con datos antes de escribir código.
+Cuando un hito abarca varias zonas o asume una hipótesis no validada, se ejecuta una lane **puramente documental** que valida la premisa con datos antes de escribir código.
 
-Estructura del audit (`docs/<milestone>-phase0-audit.md`):
+Estructura de la auditoría (`docs/<hito>-phase0-audit.md`):
 
-1. Inventario empírico (greps, conteos, scans del código actual).
-2. Cuantificación de superficie (refs por archivo, tipos de cambio).
-3. Survey de opciones (A/B/C/D) con costo + riesgo + estado resultante.
-4. Estrategia de gating (cómo se mantiene verde la build en cada PR).
+1. Inventario empírico (búsquedas, conteos y rastreos sobre el código actual).
+2. Cuantificación de la superficie afectada (referencias por archivo, tipos de cambio).
+3. Repaso de opciones (A, B, C, D) con costo, riesgo y estado resultante de cada una.
+4. Estrategia de control de calidad (cómo se mantiene verde la compilación en cada PR).
 5. Inventario de riesgos.
-6. Verdict + recomendación de phase order.
+6. Veredicto y recomendación de orden de fases.
 
-**Resultado típico documentado en la práctica:** algunos audits descartan la propuesta entera con datos empíricos, ahorrando semanas de trabajo en un milestone equivocado.
+**Resultado típico documentado en la práctica:** algunas auditorías descartan la propuesta entera con datos empíricos, lo que ahorra semanas de trabajo en un hito equivocado.
 
-### 6.2 Lane retros
+### 7.2 Retros de lane
 
 Cada lane escribe `docs/lane-experience-<lane>.md` **antes** del PR. **Sin retro, no hay PR.** Estructura fija:
 
-- **Objective metrics:** timestamps de start/end, conteos de invocaciones a build/test.
-- **Migration / change inventory:** archivos modificados, líneas agregadas/borradas, sites migrados.
-- **Compiler errors I encountered:** por clase de error, dónde, el fix, intentos fallidos.
-- **Friction points:** preguntas específicas que el brief pidió responder.
-- **Spec ambiguities or interpretive choices:** dónde el agente tuvo que decidir sin que el brief le dijera.
-- **Subjective summary:** confidence, hardest, easiest, en qué ayudó/estorbó la herramienta.
-- **Limitations of this report.**
+- **Métricas objetivas.** Marcas de tiempo de inicio y fin, conteos de invocaciones a *build* y *test*.
+- **Inventario de cambios.** Archivos modificados, líneas agregadas y borradas, sitios migrados.
+- **Errores de compilación encontrados.** Por clase de error, dónde aparecieron, el arreglo aplicado y los intentos fallidos.
+- **Puntos de fricción.** Respuestas a las preguntas específicas que el brief pidió responder.
+- **Ambigüedades o elecciones interpretativas.** Donde el agente tuvo que decidir sin que el brief lo guiara.
+- **Resumen subjetivo.** Confianza, lo más difícil, lo más fácil, en qué ayudó o estorbó la herramienta.
+- **Limitaciones del reporte.**
 
-Las retros sirven cuatro propósitos:
+Las retros sirven a cuatro propósitos:
 
 1. Capturan información mientras el contexto está fresco.
-2. Son input del siguiente lane (lessons learned).
-3. Son dataset para evaluar honestamente *LLM authorability* (qué porción del trabajo el agente realmente puede completar).
-4. Documentan gaps que se vuelven issues nuevos.
+2. Son entrada para la siguiente lane (lecciones aprendidas).
+3. Son conjunto de datos para evaluar honestamente la *autoría real del LLM*, es decir, qué porción del trabajo el agente puede completar realmente.
+4. Documentan vacíos que se transforman en nuevos *issues*.
 
-### 6.3 Mediciones (TSV)
+### 7.3 Mediciones (TSV)
 
-Antes de la primera invocación a `make` o equivalente, el brief instruye:
+Antes de la primera invocación a `make` o equivalente, el brief indica:
 
 ```bash
 export LANE="issue-NNN-descr"
@@ -281,378 +338,383 @@ echo -e "timestamp\tcmd\toutcome\telapsed_s" \
     > /tmp/lane-${LANE}-builds.tsv
 ```
 
-Cada `make` se loguea como una línea TSV. Al cerrar el lane, se appendea al retro.
+Cada `make` se registra como una línea TSV. Al cerrar la lane, ese contenido se agrega a la retro.
 
 El TSV captura:
 
-- Wall-clock real del lane.
-- Cuántos retries de cada tier necesitó.
-- Tiempo gastado en debugging vs implementación pura.
+- El tiempo de reloj real de la lane.
+- Cuántos reintentos necesitó cada nivel de pruebas.
+- El tiempo dedicado a depurar frente al de implementación pura.
 
-Es el dataset para evaluar honestamente cuánto cuesta cada lane y comparar lanes similares.
+Es el conjunto de datos que permite evaluar honestamente cuánto cuesta cada lane y comparar lanes similares.
 
-### 6.4 Honesty targets
+### 7.4 Objetivos de honestidad
 
-Documentos pinneados (`docs/<feature>-honesty-targets.md`) que registran dónde el comportamiento del sistema es **ficticio vs real**. Por ejemplo:
+Documentos fijados (`docs/<feature>-honesty-targets.md`) que registran dónde el comportamiento del sistema es **simulado** y dónde es **real**. Por ejemplo:
 
-> *"0 fires en self-compile, aquí está por qué — el typer pre-incref'a antes del check."*
+> *"0 errores en la autocompilación. Aquí está la razón: el tipador hace pre-incref antes de la verificación."*
 
 Esto no infla la métrica. Reporta lo medido, no lo proyectado. La cultura es verificable contra el TSV y las retros.
 
-### 6.5 Hallazgos como issues
+### 7.5 Hallazgos como nuevos items del backlog
 
-Cuando un agente identifica un gap fuera de scope, el flujo es:
+Cuando un agente identifica un vacío fuera del alcance, el flujo es:
 
-1. Documenta en *Friction points* del retro.
-2. **NO lo arregla.** STOP-and-report.
-3. El integrador decide si abrir issue ahora.
-4. Si se abre, el body del nuevo issue cita la retro como fuente.
+1. Lo documenta en la sección de *puntos de fricción* de la retro.
+2. **NO lo arregla.** *STOP-and-report*.
+3. El integrador decide si crear un nuevo item en el Kanban (*issue* o tarjeta) ahora.
+4. Si se crea, el cuerpo del nuevo item cita la retro como fuente.
 
-Cada gap nuevo es **su propio lane**. Esto evita que un lane se convierta en un yak-shave infinito.
+Cada vacío nuevo es **su propia lane**. Esto evita que una lane se convierta en una cadena infinita de trabajo accesorio.
 
 ---
 
-## 7. Patrones operativos
+## 8. Patrones operativos
 
-### 7.1 Lanes paralelas vs secuenciales
+### 8.1 Lanes paralelas y secuenciales
 
 **Paralelas** cuando:
 
 - Tocan zonas distintas del sistema.
 - No comparten archivos consumidores.
-- Outputs ortogonales.
+- Sus salidas son ortogonales.
 
 **Secuenciales** cuando:
 
 - Tocan los mismos archivos consumidores.
-- Una establece patrón que la siguiente replica.
+- Una establece un patrón que la siguiente replica.
 - La siguiente necesita la **retro** de la anterior.
 
-Criterio operativo: ¿se pisan en el área de trabajo o en la lección?
+Criterio operativo: ¿se pisan en el área de trabajo, o en la lección aprendida?
 
-### 7.2 STOP-and-report
+### 8.2 STOP-and-report
 
-El brief siempre incluye explícitamente: *"si encuentras X, STOP y reporta"*. Casos típicos:
+El brief siempre incluye de forma explícita una instrucción del estilo *"si encuentras X, detente y reporta"*. Casos típicos:
 
-- Bug adyacente al scope.
-- Decisión de diseño que el brief no cubre.
-- Necesidad de tocar más zonas que las anticipadas.
+- Un error adyacente al alcance.
+- Una decisión de diseño que el brief no cubre.
+- La necesidad de tocar más zonas que las anticipadas.
 
-El agente **no improvisa decisiones de scope**. Reporta y espera.
+El agente **no improvisa decisiones de alcance**. Reporta y espera.
 
-### 7.3 Wakeup scheduling
+### 8.3 Programación de wakeups
 
-Para no requerir polling humano constante ni dejar lanes huérfanas, se programa al integrador a despertarse en intervalos definidos.
+Para no exigir consultas constantes del humano y no dejar lanes huérfanas, se programa al integrador para despertar en intervalos definidos.
 
 Reglas operativas:
 
-- Delay típico entre 60 y 3600 segundos.
-- Saltar el bracket 60-270 si no hay urgencia: el cache de prompt dura 5 minutos, esperas más cortas pierden cache.
-- El prompt del wakeup es self-contained: cuando dispara, debe interpretarse sin contexto previo.
+- El retardo típico va entre 60 y 3600 segundos.
+- Saltar el rango de 60 a 270 segundos si no hay urgencia. La caché del prompt dura 5 minutos. Esperas más cortas la pierden.
+- El prompt del *wakeup* debe ser independiente. Cuando se dispara, tiene que poder interpretarse sin contexto previo.
 
-### 7.4 Auto-merge en CI verde
+### 8.4 Integración automática con CI en verde
 
-Cuando *branch protection* requiere checks específicos verdes, el lane habilita auto-merge en cada PR. Cuando los checks pasan, el merge dispara automáticamente.
+Cuando la protección de rama exige ciertas verificaciones en verde, la lane habilita la integración automática en cada PR. Cuando las verificaciones pasan, la integración se dispara sola.
 
 **Excepciones aprendidas:**
 
-- Doc-only PRs pueden quedar bloqueados si `paths-ignore` skipea el workflow y el check nunca se genera. Solución: workflow self-skip que reporta SUCCESS sin correr.
-- Sub-checks no requeridos pueden estar rojos y el PR igual mergea. Lección: correr todos los gates **localmente** antes de push, no confiar solo en CI.
+- Los PRs puramente documentales pueden quedar bloqueados si `paths-ignore` salta el flujo de trabajo y la verificación nunca se genera. La solución es un flujo de trabajo que reporta éxito sin correr nada cuando corresponde saltarlo.
+- Las verificaciones secundarias no requeridas pueden estar en rojo y el PR igual se integra. La lección es correr todos los controles de calidad **localmente** antes del *push*. No confiar solo en el CI.
 
 ---
 
-## 8. Reglas absolutas
+## 9. Reglas absolutas
 
 Reglas no negociables que aplican a todos los actores del flujo:
 
-1. **No tocar archivos de versionamiento** (`CHANGELOG`, `VERSION`); los regenera el bump al release.
-2. **No push a `main` directo**; siempre PR + auto-merge.
-3. **Sin autorización explícita: no `worktree remove` ni `branch -D`.**
-4. **No comprometer trabajo del usuario**; investigar antes de borrar.
+1. **No tocar archivos de versionamiento** (`CHANGELOG`, `VERSION`). Los regenera el incremento al lanzar la versión.
+2. **No hacer push directo a `main`**. Siempre PR e integración automática.
+3. **Sin autorización explícita, no `worktree remove` ni `branch -D`.**
+4. **No comprometer el trabajo del usuario.** Investigar antes de borrar.
 5. **Retros obligatorias** por cada lane.
-6. **Phase 0 audits** para milestones grandes (>1 PR, hipótesis no validada, varias zonas).
-7. **Honesty over optimism:** reportar lo medido, no lo proyectado.
-8. **Briefs detallados:** un brief delgado produce un agente perdido.
+6. **Auditorías de fase 0** para hitos grandes (más de un PR, hipótesis no validada, varias zonas afectadas).
+7. **Honestidad sobre optimismo.** Reportar lo medido, no lo proyectado.
+8. **Briefs detallados.** Un brief escueto produce un agente perdido.
+9. **Los principios fijados no se discuten dentro de una lane** (§3.2). Cambiar un principio es una decisión consciente del arquitecto.
 
 ---
 
-## 9. Anti-patrones
+## 10. Anti-patrones
 
-Patrones documentados como problemáticos que ELP evita explícitamente:
+Patrones documentados como problemáticos que ELP evita de forma explícita:
 
-- **Doc files prematuros** (TODOs, plan.md, decision.md). Issues + lane retros cubren lo persistente; el resto vive en la conversación.
-- **Re-fix de bug fuera de scope:** abre issue, no extiendas el lane.
-- **Migración con aliases supervivientes no documentados:** cada alias vivo necesita causa pinneada en el PR body.
-- **Auto-merge sin verificar gates locales:** sub-checks pueden mentir.
-- **Briefs delgados:** *"implementa X"* sin contexto produce un agente perdido.
+- **Archivos de documentación prematuros** (TODOs, plan.md, decision.md). Los *issues* y las retros cubren lo persistente. El resto vive en la conversación.
+- **Re-arreglar un error fuera de alcance.** Abrir un nuevo *issue*, no extender la lane.
+- **Migración con alias supervivientes no documentados.** Cada alias vivo necesita una causa fijada en el cuerpo del PR.
+- **Integración automática sin verificar los controles localmente.** Las verificaciones secundarias pueden mentir.
+- **Briefs escuetos.** *"Implementa X"* sin contexto produce un agente perdido.
 
 ---
 
-## 10. Cuándo aplicar / cuándo no
+## 11. Cuándo aplicar y cuándo no
 
-### 10.1 ELP encaja cuando
+### 11.1 ELP encaja cuando
 
 - El proyecto va a durar meses, no días.
-- Hay scope para múltiples PRs en paralelo (zonas ortogonales del sistema).
+- Se cumplen las **precondiciones de §3**: visión y diseño general escritos, principios arquitectónicos fijados, restricciones temporales claras, y un Kanban (o equivalente) gestionado.
+- Hay alcance para varios PRs en paralelo, sobre zonas ortogonales del sistema.
 - Hay valor en conservar el aprendizaje entre lanes.
 - El arquitecto puede dedicar tiempo a escribir briefs.
 
-### 10.2 ELP NO encaja cuando
+El método se probó en proyectos *greenfield*. Su extensión a proyectos con *backlog* preexistente requiere primero explicitar lo implícito (principios, convenciones, contratos no escritos) para que los briefs los puedan citar (§3.4).
+
+### 11.2 ELP NO encaja cuando
 
 - Es un prototipo desechable. La sobrecarga de briefs y retros no se amortiza.
-- Es un hotfix urgente. La cadencia de PRs en paralelo no aplica.
-- El equipo no tiene tests ni CI maduros. ELP **amplifica** lo que ya hay; sin pipeline, amplifica el caos.
-- El arquitecto no puede dedicar 10-20 minutos por brief. La calidad del brief es el techo de la calidad de la lane.
+- Es un arreglo urgente en producción. La cadencia de PRs en paralelo no aplica.
+- El equipo no tiene pruebas ni CI maduros. ELP **amplifica** lo que ya existe. Sin una tubería sólida, amplifica el caos.
+- El arquitecto no puede dedicar entre 10 y 20 minutos por brief. La calidad del brief es el techo de la calidad de la lane.
+- No existe una visión de producto ni un diseño general previo. ELP no inventa el *qué construir*, lo orquesta.
 
 ---
 
-## 11. Comparación con métodos cercanos
+## 12. Comparación con métodos cercanos
 
-### 11.1 ELP vs BMAD-METHOD
+### 12.1 ELP frente a BMAD-METHOD
 
-BMAD divide por **especialidad funcional** (Analyst → PM → Architect → Dev → QA). ELP divide por **unidad paralelizable** (lanes generalistas con scope acotado).
+BMAD divide por **especialidad funcional**, con 12 o más agentes especialistas (jefe de producto, arquitecto, desarrollador, UX, QA, etc.) que el humano va activando a lo largo de fases agile. ELP divide por **unidad paralelizable**, con lanes generalistas y alcance acotado, cada una en su propia sesión.
 
 | Dimensión | BMAD | ELP |
 |---|---|---|
 | División del trabajo | por especialidad | por unidad paralelizable |
-| Topología | secuencial (línea de fábrica) | paralela (pool de generalistas) |
-| Artefacto central | PRD compartido | brief + retro por lane |
-| Fuente del *qué construir* | PRD generado por PM | issues del backlog |
-| Captura del proceso | parcial | persistente (audits + retros + TSV) |
-| Aislamiento de cambios | un branch | un worktree por lane |
+| Topología | secuencial por fases, con colaboración multi-agente dentro de la sesión (*party mode*) | varias lanes paralelas e independientes, en sesiones aisladas |
+| Artefacto central | PRD, documento de arquitectura, historias de usuario | brief y retro por lane |
+| Fuente del *qué construir* | PRD generado por el agente jefe de producto | items del *backlog* gestionado en Kanban |
+| Captura del proceso | parcial | persistente (auditorías, retros y TSV) |
+| Aislamiento de cambios | una rama, dentro del IDE | un *worktree* y una sesión `tmux` por lane |
 
-### 11.2 ELP vs SPDD
+### 12.2 ELP frente a SPDD
 
-SPDD trata al prompt como **artefacto vivo** versionado en sincronía con el código. ELP trata al **brief** como contrato de un solo uso, pero acumula aprendizaje en las **retros**, que sí se versionan. Son ortogonales: se pueden combinar.
+SPDD trata al prompt como **artefacto vivo**, versionado en sincronía con el código, con plantillas como el *REASONS Canvas* para forzar claridad. ELP trata al **brief** como contrato de un solo uso, pero acumula aprendizaje en las **retros**, que sí se versionan. Son ortogonales y se pueden combinar: nada impide usar el *REASONS Canvas* como estructura del brief de una lane ELP.
 
-### 11.3 ELP vs SDD
+### 12.3 ELP frente a SDD
 
-SDD entrega la spec antes del código y la descarta. ELP entrega un brief antes del código y descarta el brief, pero conserva la retro. La retro reemplaza a la spec descartable como input para iteraciones futuras.
+SDD trata a la **especificación** como artefacto persistente y fuente de verdad: el código se considera un derivado regenerable desde la spec, y los cambios de requisitos son re-generaciones sistemáticas. ELP invierte la prioridad: el código integrado es el artefacto persistente, el brief es un contrato táctico de un solo uso, y la **retro** acumula el aprendizaje que la spec descartable de SDD no captura. Las dos visiones son complementarias: una spec viva al estilo SDD puede coexistir con lanes ELP que la implementan en paralelo.
 
-### 11.4 ELP vs Pantser
+### 12.4 ELP frente a Pantser
 
-El término *Pantser* aplicado al desarrollo de software fue articulado por Eduardo Díaz en *Mapas o Brújulas* (lnds.net, 2025), tomado prestado de la literatura: el *Pantser* es quien escribe **by the seat of his pants**, sin un mapa rígido, ajustando dirección con cada paso. Su contraparte clásica es el *Plotter*, que planifica meticulosamente antes de ejecutar.
+El término *Pantser* aplicado al desarrollo de software fue articulado por Eduardo Díaz en *Mapas o Brújulas* (lnds.net, 2025), tomado prestado de la literatura. El *Pantser* es quien escribe **by the seat of his pants**, sin un mapa rígido, ajustando la dirección con cada paso. Su contraparte clásica es el *Plotter*, que planifica meticulosamente antes de ejecutar.
 
-Pantser itera empíricamente con review humano disciplinado, pero el aprendizaje **muere con la conversación**. ELP captura el aprendizaje en formatos persistentes que sobreviven al cierre de la sesión. La diferencia central es **persistencia del aprendizaje**, no presencia de empirismo.
+El *Pantser* itera empíricamente con revisión humana disciplinada, pero el aprendizaje **muere con la conversación**. ELP captura ese aprendizaje en formatos persistentes que sobreviven al cierre de la sesión. La diferencia central es la **persistencia del aprendizaje**, no la presencia del empirismo.
 
 ---
 
-## 12. Métricas
+## 13. Métricas
 
 Métricas que ELP recomienda capturar a nivel de proyecto:
 
-- **PRs mergeados** por día / semana.
-- **Lanes paralelas pico** (concurrencia simultánea).
-- **% de lanes que terminan en STOP-and-report útil** (indicador de calidad de brief).
-- **Wall-clock por lane** vs estimado (desde el TSV).
-- **Retries por lane** (debugging real vs implementación primera vez).
-- **Phase 0 audits ejecutados** y **% que descartaron el milestone**.
-- **Issues abiertos como follow-up** desde retros (señal de salud del flujo).
+- **PRs integrados** por día y por semana.
+- **Lanes paralelas en su pico** de concurrencia simultánea.
+- **Porcentaje de lanes que terminan en *STOP-and-report* útil**, como indicador de la calidad del brief.
+- **Tiempo de reloj por lane** frente al estimado, desde el TSV.
+- **Reintentos por lane**, separando depuración real e implementación inicial.
+- **Auditorías de fase 0 ejecutadas** y **porcentaje que descartó el hito**.
+- ***Issues* abiertos como seguimiento** desde las retros, como señal de salud del flujo.
 
 ---
 
-## 13. Caso de estudio: compilador para un lenguaje funcional con efectos algebraicos
+## 14. Caso de estudio: compilador para un lenguaje funcional con efectos algebraicos
 
-ELP se formalizó a partir de la práctica acumulada en un proyecto concreto: la construcción desde cero de un **lenguaje de programación funcional self-hosted con efectos algebraicos** y backend LLVM, ejecutado entre el **20 de abril y el 4 de mayo de 2026** (14 días corridos).
+ELP se formalizó a partir de la práctica acumulada en un proyecto concreto: la construcción desde cero de un **lenguaje de programación funcional autocompilable con efectos algebraicos** y *backend* LLVM, ejecutado entre el **20 de abril y el 4 de mayo de 2026**, en 14 días corridos. Este proyecto es *greenfield* y partió con visión de producto, diseño general, ejemplos de sintaxis objetivo y principios arquitectónicos fijados desde el día cero (§3).
 
-### 13.1 Cifras crudas
+### 14.1 Cifras crudas
 
 | Indicador | Valor |
 |---|---|
-| Wall-clock total | **14 días corridos** |
-| Commits | **868** |
-| Pull requests mergeados | **144** |
-| Issues cerrados | **69** |
-| Releases | v0.1.0 → **v0.31.0** |
-| Pico de commits en un día | **135** |
-| Phase 0 audits ejecutados | 3 |
-| Lane retros producidas | 25+ |
-| Lanes paralelas pico | 3 simultáneas |
+| Tiempo total | **14 días corridos** |
+| *Commits* | **868** |
+| *Pull requests* integrados | **144** |
+| *Issues* cerrados | **69** |
+| Lanzamientos | v0.1.0 a **v0.31.0** |
+| Pico de *commits* en un día | **135** |
+| Auditorías de fase 0 ejecutadas | 3 |
+| Retros de lane producidas | más de 25 |
+| Pico de lanes paralelas | 3 simultáneas |
 
-Las cifras no son percepción: salen del `git log`, del `gh pr list` y del TSV de cada lane. Cada PR cita la retro que lo precede.
+Las cifras no son percepción. Salen del `git log`, del `gh pr list` y del TSV de cada lane. Cada PR cita la retro que lo precede.
 
-### 13.2 Distribución de commits
+### 14.2 Distribución de los commits
 
 ```
-   feat        ████████████████████   38%   features nuevas
-   docs        ███████████████        29%   audits + retros + design docs
+   feat        ████████████████████   38%   funcionalidades nuevas
+   docs        ███████████████        29%   auditorías, retros y diseño
    refactor    ██████                 12%
    fix         █████                  11%
    test/ci/chore █████                10%
 ```
 
-**29 % docs es alto** para un compilador. Es el dataset empírico que ELP recomienda: Phase 0 audits, lane retros, design docs por feature, honesty targets. **11 % fix es bajo**: las features llegaron limpias gracias a los gates (selfhost byte-identical desde el día 1, tier 1 obligatorio antes de push, retro obligatoria antes del PR).
+**29 % de documentación es alto** para un compilador. Es justo el conjunto de datos empíricos que ELP recomienda: auditorías de fase 0, retros, documentos de diseño por funcionalidad, objetivos de honestidad. **11 % de arreglos es bajo**. Las funcionalidades llegaron limpias gracias a los controles de calidad (autocompilación byte a byte desde el día 1, nivel 1 de pruebas obligatorio antes del *push*, retro obligatoria antes del PR).
 
-> Pagar adelante el 29 % de docs es lo que mantiene el 11 % de fix.
+> Pagar por adelantado el 29 % de documentación es lo que mantiene el 11 % de arreglos.
 
-### 13.3 Lo que se construyó
+### 14.3 Lo que se construyó
 
-Un lenguaje funcional self-hosted con propiedades poco frecuentes en una sola implementación:
+Un lenguaje funcional autocompilable con propiedades poco frecuentes en una sola implementación:
 
-- **Compilador 3-stage**: stage 0 en C (~10K líneas) → stage 1 bridge (~6K) → stage 2 self-hosted (~41K líneas).
-- **Selfhost byte-identical** como gate desde el día 1: cada cambio debe poder recompilarse a sí mismo bytes idénticos.
-- **Effect system** estilo Effekt: capabilities, handlers, *row inference*, efectos como `Console`, `Spawn`, `Cancel`, `Actor`, `Mutable`, `Ffi`.
-- **Perceus RC** estilo Koka: conteo de referencias compilado en tiempo de compilación, sin borrow checker, con `reuse-in-place` y eliminación de increfs/decrefs redundantes.
-- **Fibers BEAM-style**: heap privado por fiber, mensajes copiados, scheduler cooperativo con `swapcontext`.
-- **Stdlib + tooling completo**: `kai build/run/test/fmt/repl/lsp/doc/bench/check`.
-- **TCO mandatory**: tail-call optimization como regla del lenguaje, *self-tail-calls* reescritos a goto-loops en C-emit.
+- **Compilador en tres etapas.** Etapa 0 en C (unas 10K líneas), etapa 1 como puente (unas 6K), etapa 2 autocompilable (unas 41K líneas).
+- **Autocompilación byte a byte** como control de calidad desde el día 1. Cada cambio debe poder recompilarse a sí mismo con bytes idénticos.
+- **Sistema de efectos** al estilo Effekt: capacidades, manejadores, inferencia de filas, efectos como `Console`, `Spawn`, `Cancel`, `Actor`, `Mutable`, `Ffi`.
+- **Conteo de referencias estilo Perceus** (Koka). Conteo compilado en tiempo de compilación, sin verificador de préstamos, con reutilización en sitio y eliminación de incrementos y decrementos redundantes.
+- **Fibras al estilo BEAM.** Montículo privado por fibra, mensajes copiados, planificador cooperativo con `swapcontext`.
+- **Biblioteca estándar y herramientas completas:** `kai build/run/test/fmt/repl/lsp/doc/bench/check`.
+- **Optimización de llamadas en cola obligatoria.** Es una regla del lenguaje. Las auto-llamadas en cola se reescriben como bucles con `goto` en la emisión a C.
 
-### 13.4 Comparación con la industria
+### 14.4 Comparación con la industria
 
-Proyectos comparables públicos, con su tiempo a self-hosting funcional:
+Proyectos públicos comparables y su tiempo hasta lograr autocompilación funcional:
 
 | Proyecto | Tiempo | Equipo |
 |---|---|---|
-| Roc (efectos + funcional) | ~5 años | research |
-| Koka (inventó Perceus) | ~10+ años | académico |
-| Effekt (capabilities) | ~5 años | PhD |
-| Crystal (LLVM + inferencia) | ~3 años | core team |
+| Roc (efectos y funcional) | unos 5 años | investigación |
+| Koka (inventó Perceus) | más de 10 años | académico |
+| Effekt (capacidades) | unos 5 años | PhD |
+| Crystal (LLVM e inferencia) | unos 3 años | equipo principal |
 
-Equivalente humano para alcanzar el mismo *scope* técnico:
+Equivalente humano para alcanzar el mismo alcance técnico:
 
-> **3-4 ingenieros senior compiler-experts × 12-18 meses ≈ USD 1.0-1.5 M en payroll.**
+> **De 3 a 4 ingenieros senior expertos en compiladores, durante 12 a 18 meses, equivalente a entre USD 1.0 y 1.5 millones en remuneraciones.**
 
-ELP llegó al mismo punto en **12-14 días, con un humano (arquitecto) + un agente integrador + lanes paralelas**.
+ELP llegó al mismo punto en **12 a 14 días, con un humano (el arquitecto), un agente integrador y lanes paralelas**.
 
-### 13.5 Qué del método contribuyó
+### 14.5 Qué aportó el método
 
-Atribución honesta del resultado, no extrapolación:
+Atribución honesta del resultado, sin extrapolar:
 
-1. **Selfhost byte-identical desde el día 1.** Cualquier cambio que rompa la auto-compilación se descubre en la build, no en producción. Blindó cada feature contra regresiones invisibles.
-2. **Three-stage bootstrap.** Permite que stage 2 use el lenguaje completo sin limitarse al subset que un compilador C-only podría implementar. Stage 1 funciona como bridge.
-3. **Phase 0 audits como cultura.** Tres audits ya ahorraron semanas: uno descartó por completo una propuesta de bootstrap split con datos empíricos. La premisa era falsa; sin el audit, el equipo habría implementado sobre una hipótesis equivocada.
-4. **Lane retros como dataset, no documentación.** Retros que documentan compiler errors, fix paths fallidos y *friction points* alimentan el siguiente lane y son el dato real para evaluar *LLM authorability*.
-5. **Honesty targets pinneados.** Cada feature documenta dónde su comportamiento es ficticio vs real (ej.: *"0 fires en self-compile, aquí está por qué"*). La cultura escala porque la honestidad es verificable contra los TSV.
-6. **Issues como roadmap.** El *qué construir* funcional vive en GitHub, separado del *cómo* (que vive en el brief). Esto evita que cada lane se convierta en un yak-shave.
+1. **Autocompilación byte a byte desde el día 1.** Cualquier cambio que rompa la autocompilación se descubre en la compilación, no en producción. Blindó cada funcionalidad contra regresiones invisibles.
+2. **Arranque en tres etapas.** Permite que la etapa 2 use el lenguaje completo sin limitarse al subconjunto que un compilador escrito solo en C podría implementar. La etapa 1 actúa como puente.
+3. **Auditorías de fase 0 como cultura.** Tres auditorías ya ahorraron semanas. Una descartó por completo una propuesta de partir el arranque, con datos empíricos. La premisa era falsa. Sin la auditoría, el equipo habría implementado sobre una hipótesis equivocada.
+4. **Retros como conjunto de datos, no como documentación.** Las retros que registran errores de compilación, caminos de arreglo fallidos y puntos de fricción alimentan a la siguiente lane y son el dato real para evaluar la *autoría real del LLM*.
+5. **Objetivos de honestidad fijados.** Cada funcionalidad documenta dónde su comportamiento es simulado y dónde es real. Por ejemplo, *"0 errores en autocompilación. Aquí está la razón."* La cultura escala porque la honestidad es verificable contra los TSV.
+6. ***Backlog* como hoja de ruta.** El *qué construir* funcional vive en el Kanban (en este caso, los *issues* de GitHub como sustituto funcional), separado del *cómo*, que vive en el brief. Esto evita que cada lane se convierta en una cadena de trabajo accesorio.
 
-### 13.6 Lo que se cerró como negativo
+### 14.6 Lo que se cerró como negativo
 
-Decisiones que no calzaron, pinneadas como *negativos*:
+Decisiones que no calzaron, fijadas como *negativos*:
 
-- *Drop specialisation*: medido −1.7 % al `-O2`, +5.4 % regresión al `-O0`. Lane cerrada como negativo. La phase 2 unboxing había absorbido el overhead.
-- *Bootstrap split*: descartado por audit empírico antes de implementarse. Phase 0 ahorró 2-3 semanas de trabajo equivocado.
+- *Drop specialisation*. Se midió un −1,7 % con `-O2` y un +5,4 % de regresión con `-O0`. La lane se cerró como negativo. El desempaquetado de fase 2 ya había absorbido la sobrecarga.
+- *Bootstrap split*. Descartado por auditoría empírica antes de implementarse. La fase 0 ahorró entre 2 y 3 semanas de trabajo equivocado.
 
-Estos negativos no son fallas, son **datos**. Cada uno tiene retro pinneada que evita repetir.
+Estos negativos no son fallas, son **datos**. Cada uno tiene una retro fijada que evita repetirlos.
 
-### 13.7 Observación final
+### 14.7 Observación final
 
-El proyecto tiene una propiedad poco frecuente: es **ambicioso técnicamente y honesto operacionalmente** al mismo tiempo. Phase 0 audits + lane retros + honesty targets construyen un dataset que un equipo humano normalmente posterga o pierde. El humano (arquitecto) no escribió código; mantuvo juicio de scope, decisiones de arquitectura y *calls* de "esto no me convence". Los agentes ejecutaron lanes con briefs detallados.
+El proyecto tiene una propiedad poco frecuente. Es **técnicamente ambicioso y operacionalmente honesto** al mismo tiempo. Las auditorías de fase 0, las retros y los objetivos de honestidad construyen un conjunto de datos que un equipo humano normalmente posterga o pierde. El humano, el arquitecto, no escribió código. Mantuvo el juicio sobre el alcance, las decisiones de arquitectura y los llamados a la prudencia del tipo "esto no me convence". Los agentes ejecutaron las lanes con briefs detallados.
 
-Si la hipótesis de fondo (LLM authorability validable contra el dataset acumulado) se sostiene, este caso es la primera evidencia empírica documentada de un proyecto técnicamente complejo construido bajo ELP.
-
----
-
-## 14. Limitaciones conocidas
-
-- Si el arquitecto está dormido y un agente hace STOP-and-report, la lane queda **bloqueada** hasta que el humano responda. *Workaround:* briefs con autorización pre-aprobada para casos comunes.
-- Si CI tarda y el wakeup dispara antes, se gasta cache de prompt sin avance. *Tradeoff* consciente.
-- Briefs detallados toman 10-20 minutos del arquitecto. No siempre vale para lanes triviales (ej.: edición de un archivo).
-- El método asume herramientas de versionamiento y CI maduras; en proyectos sin ellas, no aplica directamente.
-- Cambio de máquina o reinicio de sesión del integrador pierde contexto vivo. No hay solución estructural hoy.
+Si la hipótesis de fondo se sostiene (la autoría real del LLM, validable contra el conjunto de datos acumulado), este caso es la primera evidencia empírica documentada de un proyecto técnicamente complejo construido bajo ELP.
 
 ---
 
-## 15. Origen y referencias
+## 15. Limitaciones conocidas
 
-ELP fue formalizado a partir de la práctica acumulada en proyectos de larga duración con múltiples agentes IA trabajando en paralelo. La primera articulación pública del método ocurre en este documento.
+- Si el arquitecto está durmiendo y un agente hace *STOP-and-report*, la lane queda **bloqueada** hasta que el humano responda. Una mitigación práctica es incluir en el brief autorizaciones preaprobadas para los casos comunes.
+- Si el CI tarda y el *wakeup* dispara antes, se gasta caché del prompt sin avance. Es una compensación consciente.
+- Los briefs detallados toman entre 10 y 20 minutos del arquitecto. No siempre vale la pena para lanes triviales, como la edición de un solo archivo.
+- El método asume herramientas de versionamiento y CI maduras. En proyectos sin ellas no aplica directamente.
+- Cambiar de máquina o reiniciar la sesión del integrador pierde el contexto vivo. Hoy no hay solución estructural.
+
+---
+
+## 16. Origen y referencias
+
+ELP se formalizó a partir de la práctica acumulada en proyectos de larga duración con varios agentes de IA trabajando en paralelo. La primera articulación pública del método aparece en este documento.
 
 Métodos y referencias relacionadas:
 
-- **Díaz, E.,** *"Mapas o Brújulas"*, lnds.net, 2025-10-31. URL: <https://lnds.net/blog/lnds/2025/10/31/mapas-o-brujulas/>. Articulación en español del binomio *Plotter / Pantser* aplicado al desarrollo de software.
-- **BMAD-METHOD** (Breakthrough Method for Agile AI-Driven Development) — pipeline multi-agente con roles funcionales.
-- **SDD** (Spec-Driven Development) — la especificación es el input del modelo.
-- **SPDD** (Structured Prompt-Driven Development) — Zhang & Xia, Thoughtworks, 2026. El prompt como artefacto vivo.
-- **Saltzer & Schroeder, *The Protection of Information in Computer Systems***, 1975 — los principios de diseño seguro que aplican igual al agente.
+- **Díaz, E.,** *"Mapas o Brújulas"*, lnds.net, 2025-10-31. URL: <https://lnds.net/blog/lnds/2025/10/31/mapas-o-brujulas/>. Articulación en español del binomio *Plotter* y *Pantser* aplicado al desarrollo de software.
+- **BMAD-METHOD** (*Breakthrough Method for Agile AI-Driven Development*), de Brian Madison. Tubería multiagente con roles funcionales. Repositorio: <https://github.com/bmad-code-org/BMAD-METHOD>. Documentación: <https://docs.bmad-method.org/>. Masterclass oficial en YouTube: <https://www.youtube.com/watch?v=LorEJPrALcg>.
+- **SDD** (*Spec-Driven Development*). La especificación como fuente de verdad y artefacto persistente desde el cual se regenera el código. Implementación de referencia: GitHub Spec Kit, <https://github.com/github/spec-kit>. Documentación: <https://github.github.com/spec-kit/>. Tutorial completo en YouTube: <https://www.youtube.com/watch?v=xfyec__ieHA>.
+- **SPDD** (*Structured Prompt-Driven Development*), de Wei Zhang y Jessie Jie Xia (Thoughtworks, 2026). El prompt como artefacto vivo, con el *REASONS Canvas* como plantilla. Artículo en martinfowler.com: <https://martinfowler.com/articles/structured-prompt-driven/>. Video explicativo en YouTube: <https://www.youtube.com/watch?v=CotFOAGtb64>.
+- **Saltzer y Schroeder**, *The Protection of Information in Computer Systems*, 1975. Los principios de diseño seguro que aplican igual al agente.
 - **Karpathy, A.,** *"Vibe Coding"*, 2024.
 - **Krouse, S.,** *"Vibe Code is Legacy Code"*, 2025.
-- **Emerson, Lake & Palmer**, *Karn Evil 9: First Impression Part 2*, 1973. Origen del *backronym* ELP.
+- **Emerson, Lake & Palmer**, *Karn Evil 9: First Impression Part 2*, 1973. Origen del acrónimo retrospectivo ELP.
 
 ---
 
-## Apéndice A — Plantilla mínima de brief
+## Apéndice A. Plantilla mínima de brief
 
 ```markdown
-# Lane brief — issue-NNN-<descr>
+# Brief de la lane: issue-NNN-<descr>
 
-## Goal
-[1-3 frases. Qué se entrega y por qué.]
+## Objetivo
+[1 a 3 frases. Qué se entrega y por qué.]
 
-## Context
-- Repo: <repo>, branch: issue-NNN-<descr>
+## Contexto
+- Repositorio: <repo>, rama: issue-NNN-<descr>
 - Verificación: git log --oneline -5 origin/main
-- Reglas pinneadas del proyecto: CLAUDE.md
-- Lanes paralelas en flight: [lista]
+- Reglas fijadas del proyecto: CLAUDE.md
+- Lanes paralelas en ejecución: [lista]
 
-## Read first
+## Lectura previa
 - Issue: gh issue view NNN
-- Audit: docs/<milestone>-phase0-audit.md (si aplica)
+- Auditoría: docs/<hito>-phase0-audit.md (si aplica)
 - Retros relacionadas: docs/lane-experience-<previo>.md
-- Archivos a inspeccionar: <paths>
+- Archivos a inspeccionar: <rutas>
 
-## Decisions pinned
+## Decisiones fijadas
 - [decisión 1]
 - [decisión 2]
 
-## Lane scope
-DO:
+## Alcance de la lane
+SÍ:
 - [acción 1]
 - [acción 2]
 
-DO NOT:
+NO:
 - [prohibición 1]
 - [prohibición 2]
 
 STOP-and-report si:
 - [condición 1]
 
-## Required outputs
-- Archivos esperados modificados: <paths>
-- Mensaje de commit: <type>(<scope>): <subject>
-- PR body: [qué incluir]
+## Salidas requeridas
+- Archivos esperados a modificar: <rutas>
+- Mensaje de commit: <tipo>(<alcance>): <asunto>
+- Cuerpo del PR: [qué incluir]
 - Cierre: gh pr create + gh pr merge --auto
 
-## Discipline
-- Tier 0 + Tier 1 local antes de push.
-- Working tree limpio en cada commit.
+## Disciplina
+- Nivel 0 y nivel 1 de pruebas en local antes del push.
+- Árbol de trabajo limpio en cada commit.
 
-## Instrumentation
-- TSV de builds en /tmp/lane-${LANE}-builds.tsv.
+## Instrumentación
+- TSV de compilaciones en /tmp/lane-${LANE}-builds.tsv.
 - Retro en docs/lane-experience-issue-NNN-<descr>.md (secciones obligatorias).
 ```
 
 ---
 
-## Apéndice B — Plantilla mínima de lane retro
+## Apéndice B. Plantilla mínima de retro de lane
 
 ```markdown
-# Lane retro — issue-NNN-<descr>
+# Retro de la lane: issue-NNN-<descr>
 
-## Objective metrics
-- Start: <ISO timestamp>
-- End: <ISO timestamp>
-- Wall-clock: <duración>
-- Build invocations: <conteo por tier>
+## Métricas objetivas
+- Inicio: <marca de tiempo ISO>
+- Fin: <marca de tiempo ISO>
+- Duración total: <duración>
+- Invocaciones de compilación: <conteo por nivel>
 
-## Migration / change inventory
+## Inventario de cambios
 - Archivos modificados: <lista>
-- Líneas agregadas / borradas: +X / -Y
-- Sites tocados: <conteo>
+- Líneas agregadas y borradas: +X / -Y
+- Sitios tocados: <conteo>
 
-## Compiler errors I encountered
-- [Clase de error]: dónde, fix, intentos.
+## Errores de compilación encontrados
+- [Clase de error]: dónde, arreglo aplicado, intentos.
 
-## Friction points
+## Puntos de fricción
 - [Pregunta del brief]: respuesta basada en lo observado.
 
-## Spec ambiguities or interpretive choices
-- [Decisión sin spec explícita]: justificación.
+## Ambigüedades o elecciones interpretativas
+- [Decisión sin especificación explícita]: justificación.
 
-## Subjective summary
-- Confidence: alto / medio / bajo.
-- Hardest: ...
-- Easiest: ...
-- Compiler / tooling help / hinder: ...
+## Resumen subjetivo
+- Confianza: alta, media o baja.
+- Lo más difícil: ...
+- Lo más fácil: ...
+- En qué ayudó o estorbó el compilador o la herramienta: ...
 
-## Limitations of this report
-- [Qué este reporte no cubre.]
+## Limitaciones del reporte
+- [Qué no cubre este reporte.]
 ```
