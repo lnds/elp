@@ -2,8 +2,8 @@
 title: "ELP: Empirical Lane Parallelism"
 subtitle: "A method for software engineering with multiple agents in parallel, orchestrated by humans"
 author: "Eduardo Díaz Cortés"
-date: "2026-05-13"
-version: "0.2"
+date: "2026-11-25"
+version: "0.3"
 ---
 
 # ELP: Empirical Lane Parallelism
@@ -26,6 +26,8 @@ version: "0.2"
 2. **Brief as contract.** Each lane receives a structured document defining its scope, the decisions already made, what to do and what not to do, and what to deliver.
 3. **Empirical capture of the process.** Pre-code audits, mandatory per-lane retrospectives, and per-build measurements are kept as a dataset that feeds the next lanes.
 
+The *what to build* comes from an **inception** that pins the vision and splits it into increments; each increment has a spec, and the spec is divided into the tasks handed to the lanes.
+
 ELP does not replace the classical development methods, it complements them with an explicit pattern for coordinating several agents without the system degrading within a few weeks.
 
 The method has been empirically validated on *greenfield* projects, that is, new projects with no legacy code that start with a written product vision and general design but no prior implementation. ELP extends naturally to projects with a product vision and a well-defined *backlog*, although sustained practice outside the *greenfield* case remains future work.
@@ -47,11 +49,21 @@ The methods of the current spectrum (*vibe coding*, *Pantser*, SDD, SPDD, BMAD) 
 
 ## 2. Definitions
 
-**Lane.** A parallelizable unit of work, tied to a single *backlog* item (typically a card on a Kanban board or a GitHub *issue*). Each lane is materialized as a *git worktree* with its branch, its brief, and its `tmux` session. The agent that executes a lane runs in **autonomous mode** (in Claude, this corresponds to *auto mode on*): it executes the brief from start to finish without pausing for confirmation, except at the *STOP-and-report* points explicitly declared.
+**Lane.** A parallelizable unit of work, tied to a single task in the ticket source (a card on its own board or an *issue* in GitHub, Shortcut, Linear or Jira). Each lane is materialized as a *git worktree* with its branch, its brief, and its `tmux` session. The agent that executes a lane runs in **autonomous mode** (in Claude, this corresponds to *auto mode on*): it executes the brief from start to finish without pausing for confirmation, except at the *STOP-and-report* points explicitly declared.
 
 **Brief.** A structured document that defines the lane's contract. It is the input of the agent that executes the lane. The name comes from *briefing*: before launch, the architect and the integrator hold a *briefing*, an explicit alignment, and the resulting document is what the agent receives as a contract. The brief **complements** the *backlog* item (which captures the functional *what*) with tactical instructions (the operational *how* for that specific execution).
 
-**Kanban.** A board (physical or digital) where the architect manages initiatives, triages priorities, and decides what to address in the next lane. ELP does not prescribe the specific tool. In the initial practice, GitHub *issues* were used as a functional substitute. What matters is that there is a single, consultable place where the *what to build* lives separate from the *how to build* (which lives in the brief).
+**Inception.** The initial phase, in the style of a *lean inception*, in which the architect defines the product vision, what it is and is not, its principles, and its increments (§3.1).
+
+**Constitution.** The document with the rules every agent of the project follows, from which their configuration is generated (`AGENTS.md`, `CLAUDE.md`, `.claude/`) (§3.4).
+
+**Increment.** A version of the product that is useful on its own, with a goal, a scope, and a definition of done.
+
+**Spec.** An increment's document: scope, decisions, open questions, risks, acceptance criteria, and its split into tasks (§3.2).
+
+**Task.** A unit of a spec that becomes a lane. It declares its paths, its dependencies, and the tests that close it.
+
+**Ticket source.** The single, consultable place where tasks live: a board of its own or an external ticket system such as GitHub, Shortcut, Linear or Jira (§3.5). It plays the role the Kanban board had in the previous version of the method.
 
 **Integrator.** An AI agent with an interactive session that holds the shared context with the human, reads the repository state, writes the briefs, launches the lanes, and monitors their progress. It does not touch code directly.
 
@@ -69,52 +81,94 @@ The methods of the current spectrum (*vibe coding*, *Pantser*, SDD, SPDD, BMAD) 
 
 ## 3. Project starting point
 
-ELP does not start from zero. It assumes explicit initial conditions, without which the method does not hold. The empirically validated scope is **greenfield**. Its extension to projects with a pre-existing *backlog* is natural, but it requires the same preconditions.
+ELP does not start from zero. Before the first lane, the *what to build* must exist: a written vision, a constitution with the pinned principles, increments with their spec, and a ticket source holding the tasks. When those artifacts do not exist, the **inception** (§3.1) produces them. The empirically validated scope is **greenfield**. Its extension to projects with a pre-existing *backlog* is natural, but it requires the same preconditions.
 
-### 3.1 Pre-existing documentation
+### 3.1 Inception
 
-The project starts with a minimum body of documentation that the integrator can read and that serves as the shared source for writing the briefs. Typically it includes:
+Inception is the phase in which the architect, with the integrator as facilitator, defines the product before a single lane exists. It follows the shape of a *lean inception*: short, focused on decisions, with written artifacts at the end of each step. It produces no code.
 
-- **Product vision.** What is to be built, for whom, and what problem it solves.
+Steps and artifacts:
+
+1. **Vision.** What is to be built, for whom, and what problem it solves, in one sentence and in one paragraph (`vision.md`).
+2. **Is, is not, does, does not.** Four short lists that pin the product's edge. What the product *is not* and *does not do* matters as much as what it is and does: it is the first scope filter the briefs will cite.
+3. **Personas and journeys.** Who uses the product, and the journeys the first increment has to make possible.
+4. **Constitution.** The architectural and business principles, the time constraints, the conventions, the project's absolute rules, and the roles with their permissions (§3.4). `AGENTS.md`, `CLAUDE.md` and the `.claude/` configuration are generated from it.
+5. **Increments.** The roadmap, split into increments (§3.2): each one is a version of the product that is useful on its own, with its goal and its definition of done. The architect decides the order.
+6. **Glossary.** The domain terms and how they relate.
+
+Inception ends when the first increment has a spec ready to be split into tasks. Later increments need no spec yet: they are specified when their turn comes, with what the retros of the earlier ones taught.
+
+Inception is repeated, shorter, when the product changes direction or when an increment the vision did not foresee is added. Changing the vision, like changing a principle, is a conscious decision of the architect.
+
+### 3.2 Increments, specs and tasks
+
+The *what to build* comes down in three levels, and each level produces the artifact the next one consumes:
+
+- **Increment.** A version of the product that is useful on its own and can be used and evaluated when it is done. It has a goal, a scope, and a definition of done.
+- **Spec.** One per increment, written when the increment is about to start. It pins the scope in and out, the decisions taken, the open questions for the architect, the risks, and the acceptance criteria. When the increment spans several areas or rests on an unvalidated hypothesis, its spec starts with a **phase 0 audit** (§7.1), which can change or discard it.
+- **Task.** The spec is split into tasks. Each task declares the paths it owns, the tasks it depends on, the tests that close it, and the release it ships in. The split looks for tasks that share no files, so they can run in parallel (§8.1). Each task lives as an item in the ticket source (§3.5) and becomes a lane when its dependencies are closed.
+
+A lane's brief (§6) cites its task, the increment's spec, and the vision. The integrator writes the spec and the split together with the architect, and the architect answers the open questions before the increment's first lane.
+
+### 3.3 Prior documentation
+
+Inception produces the minimum body of documentation that the integrator reads and that serves as the shared source for writing the briefs. Typically it includes:
+
+- **Product vision**, with its is, is not, does and does not lists.
 - **General design or target architecture.** Main components, language, runtime, technology decisions.
 - **Examples and prototypes.** Snippets of the target syntax, interface mockups, a *spike* on a critical piece, reference repositories.
 - **Glossary or domain model.** Problem-domain terms and how they relate to each other.
+- **Constitution** (§3.4), with the agent configuration generated from it.
+- **Increments**, with the spec of the one under way.
 
 The quality of the briefs is a direct function of this documentation. Without a written vision, the integrator invents the scope. Without a general design, the lanes drift in incompatible directions.
 
-### 3.2 Pinned principles
+### 3.4 Project constitution
 
-Before the first lane the following are established, ideally in writing in the repository (`docs/principles.md` or equivalent):
+The **constitution** is the document that gathers the rules every agent of the project follows (`docs/constitution.md` or equivalent). The inception writes its first version, and each agent's configuration is **generated** from it. It is not maintained by hand in several places.
+
+It contains:
 
 - **Architectural principles.** Invariants that no lane is allowed to break. For example, *"selfhost byte-identical on every PR"*, *"no runtime dependency on X"*, *"every observable function must be instrumented"*.
 - **Business principles** (when they apply). What the product prioritizes when tradeoffs arise. For example, *"latency over throughput"*, *"legacy compatibility over release velocity"*.
 - **Time constraints.** Launch goals and dates, release roadmap, freeze windows, externally committed milestones.
+- **Conventions.** Commit and versioning format, code and comment style, the repository's language, how tests are structured and run.
+- **The project's absolute rules.** Those of §9 plus its own: which files are not touched, which actions need authorization, which data is never read or written.
+- **Roles and permissions.** Which agents take part (integrator and specialists), what each one may do, which tools and commands it is allowed and which are denied.
+- **Tools and environment.** Pinned tool versions, how to build and test, the isolation tests must respect.
 
-The principles act as axioms of the flow. The brief cites them, it does not re-discuss them. Changing a principle is a conscious decision of the architect, not something a lane can do in passing.
+From the constitution come the files each agent tool reads on start: `AGENTS.md`, `CLAUDE.md`, the files under `.claude/` (permissions in `settings.json`, agent definitions, *skills* and *hooks*), and their equivalents in other tools. They are derived. Changing a rule means changing the constitution and generating them again; editing them directly makes them diverge.
 
-### 3.3 Backlog managed on Kanban
+The constitution's rules act as axioms of the flow. The brief cites them, it does not re-discuss them. Changing the constitution is a conscious decision of the architect, not something a lane can do in passing. When a retro shows that a rule is missing, the finding becomes a proposed change to the constitution that the architect accepts or rejects.
 
-The *what to build* lives on a **Kanban board** that the architect uses to manage initiatives and triage what to address next. ELP does not prescribe the specific tool. It can be a dedicated board (Linear, Jira, Trello, GitHub Projects) or the set of GitHub *issues* as a functional substitute (ELP's initial implementation used the latter).
+### 3.5 Ticket source
 
-What matters is that the board fulfills three functions:
+Tasks live in a **ticket source**: a single, consultable place where the *what to build* stays separate from the *how to build*, which lives in the brief. The source is a project setting, independent of whether the project is *greenfield* or not:
 
-1. **Inventory.** Each item is a candidate unit to become a lane.
+- **A board of its own** in the tool that orchestrates the lanes, with no external service.
+- **An external ticket system:** GitHub (*issues* and *Projects*), Shortcut, Linear or Jira, among others. A project with a pre-existing *backlog* normally uses the one it already has, and ELP connects to it instead of replacing it.
+
+Whatever the source, it fulfills four functions:
+
+1. **Inventory.** Each item is a task that is a candidate to become a lane.
 2. **Prioritization.** The architect orders, groups, and discards items. The integrator reads that order.
-3. **Traceability.** Every brief, retro, and PR references the Kanban item it comes from.
+3. **State.** The item reflects where its lane is: ready, running, stopped on a *STOP-and-report*, in review, or integrated. With an external source, the state is synchronized both ways.
+4. **Traceability.** Every brief, retro, and PR references the item it comes from, and the item links its spec and increment.
 
-The brief **complements** the Kanban item. The item captures the functional *what*, with the detail the architect deems necessary, and the brief adds the tactical *how* (pinned decisions, files to touch, explicit scope) as the result of the *briefing* between architect, integrator, and lane agent.
+The brief **complements** the item. The item captures the functional *what*, with the detail the architect deems necessary, and the brief adds the tactical *how* (pinned decisions, files to touch, explicit scope) as the result of the *briefing* between architect, integrator, and lane agent.
 
-### 3.4 Greenfield versus projects with a pre-existing backlog
+### 3.6 Greenfield versus projects with a pre-existing backlog
 
 | Dimension | Greenfield (validated) | With pre-existing backlog (natural extension) |
 |---|---|---|
 | Starting code | none or an initial *spike* | existing base with conventions |
+| Inception | complete, before the first lane | explicitating: the vision and principles the code already implies are written down, and the next increments are defined |
 | Product vision | freshly written | mature, possibly versioned |
 | Architectural principles | established at the start | documented by extracting them from the code |
-| Kanban board | new, filled over time | pre-existing, with given debt and priorities |
+| Ticket source | its own or external, new | normally the system the project already uses, with its debt and priorities |
 | Main risk | drifting without guides | imposing ELP on a flow that already works |
 
-The extension to non-*greenfield* projects requires a prior step: **making the implicit explicit** (principles, conventions, unwritten contracts) so that the briefs can cite them.
+The extension to non-*greenfield* projects requires a prior step: **making the implicit explicit** (principles, conventions, unwritten contracts) so that the briefs can cite them. That step is the inception of an existing project.
 
 ---
 
@@ -126,6 +180,7 @@ ELP defines three roles with clear, non-overlapping responsibilities.
 
 Responsibilities:
 
+- Lead the inception: vision, what the product is and is not, principles and increments (§3.1), and answer each spec's open questions.
 - Decide the scope of each milestone and the order of execution across lanes.
 - Approve or reject PRs, or enable automatic integration under specific conditions.
 - Explicitly authorize irreversible actions (*force push*, destructive cleanup, *push* to *main*).
@@ -142,6 +197,7 @@ What the architect typically **does not** do:
 
 Responsibilities:
 
+- Facilitate the inception and write, with the architect, each increment's spec and its split into tasks (§3.2).
 - Hold the shared project context, reading the repository state (*issues*, PRs, prior retros, audits).
 - Write detailed briefs before launching each lane.
 - Launch the lane agents in separate `tmux` sessions, each with its *worktree*.
@@ -236,15 +292,15 @@ One to three sentences. What is delivered and why it matters now. Ideally it cit
 
 - Repository and branch (always `issue-NNN-descr` from the current `main`).
 - Expected verification (for example, `git log --oneline -5 origin/main`).
-- Project pinned rules (`CLAUDE.md`, files that are not to be touched).
-- Applicable architectural and business principles (see §3.2).
+- The project constitution and the configuration generated from it (`AGENTS.md`, `CLAUDE.md`, files that are not to be touched).
+- Applicable architectural and business principles (see §3.4).
 - Parallel lanes in flight, to anticipate conflicts.
 
 ### 6.3 Read first
 
 List of files the agent must read before writing code:
 
-- The *backlog* item (*issue* or Kanban card) in full.
+- The task in the ticket source, in full, and the spec of the increment it belongs to.
 - The relevant audit or design document, when it exists.
 - Retros of prior lanes that share context.
 - Specific source files the lane will touch.
@@ -362,7 +418,7 @@ When an agent identifies a gap outside scope, the flow is:
 
 1. Document it in the *friction points* section of the retro.
 2. **Do NOT fix it.** *STOP-and-report*.
-3. The integrator decides whether to create a new Kanban item (*issue* or card) now.
+3. The integrator decides whether to create a new task in the ticket source now.
 4. If created, the new item's body cites the retro as source.
 
 Each new gap is **its own lane**. This prevents a lane from turning into an infinite chain of incidental work.
@@ -430,7 +486,7 @@ Non-negotiable rules that apply to every actor in the flow:
 6. **Phase 0 audits** for large milestones (more than one PR, unvalidated hypothesis, several zones affected).
 7. **Honesty over optimism.** Report what was measured, not what was projected.
 8. **Detailed briefs.** A thin brief produces a lost agent.
-9. **Pinned principles are not re-discussed inside a lane** (§3.2). Changing a principle is a conscious decision of the architect.
+9. **The constitution is not re-discussed inside a lane** (§3.4). Changing a principle is a conscious decision of the architect.
 
 ---
 
@@ -451,12 +507,12 @@ Patterns documented as problematic that ELP explicitly avoids:
 ### 11.1 ELP fits when
 
 - The project will last months, not days.
-- The **preconditions of §3** are in place: a written vision and general design, pinned architectural principles, clear time constraints, and a Kanban (or equivalent) being actively managed.
+- The **preconditions of §3** are in place: a written vision and general design (or an inception that produces them), a constitution with the pinned principles, clear time constraints, increments with their spec, and a managed ticket source.
 - There is scope for several PRs in parallel, over orthogonal zones of the system.
 - There is value in preserving learning across lanes.
 - The architect can dedicate time to writing briefs.
 
-The method was validated on *greenfield* projects. Its extension to projects with a pre-existing *backlog* requires first making the implicit explicit (principles, conventions, unwritten contracts) so that the briefs can cite them (§3.4).
+The method was validated on *greenfield* projects. Its extension to projects with a pre-existing *backlog* requires first making the implicit explicit (principles, conventions, unwritten contracts) so that the briefs can cite them (§3.6).
 
 ### 11.2 ELP does NOT fit when
 
@@ -464,7 +520,7 @@ The method was validated on *greenfield* projects. Its extension to projects wit
 - It is an urgent production fix. The cadence of parallel PRs does not apply.
 - The team has no mature tests or CI. ELP **amplifies** what already exists. Without a solid pipeline, it amplifies the chaos.
 - The architect cannot dedicate 10 to 20 minutes per brief. The quality of the brief is the ceiling on the quality of the lane.
-- There is no product vision or general design beforehand. ELP does not invent the *what to build*, it orchestrates it.
+- Nobody is willing to run the inception. ELP does not invent the *what to build*: the inception (§3.1) produces it with the architect, and without it there is nothing for the briefs to come from.
 
 ---
 
@@ -479,7 +535,7 @@ BMAD divides by **functional specialty**, with 12+ specialist agents (product ma
 | Division of work | by specialty | by parallelizable unit |
 | Topology | sequential by phases, with multi-agent collaboration inside the session (*party mode*) | several parallel and independent lanes, in isolated sessions |
 | Central artifact | PRD, architecture document, user stories | brief and retro per lane |
-| Source of *what to build* | PRD produced by the product-manager agent | items of the *backlog* managed on Kanban |
+| Source of *what to build* | PRD produced by the product-manager agent | inception, a spec per increment, and tasks in the ticket source |
 | Process capture | partial | persistent (audits, retros, and TSV) |
 | Change isolation | one branch, inside the IDE | one *worktree* and one `tmux` session per lane |
 
@@ -642,11 +698,12 @@ Related methods and references:
 ## Context
 - Repository: <repo>, branch: issue-NNN-<descr>
 - Verification: git log --oneline -5 origin/main
-- Project pinned rules: CLAUDE.md
+- Constitution: docs/constitution.md (and the generated AGENTS.md / CLAUDE.md)
 - Parallel lanes in flight: [list]
 
 ## Read first
-- Issue: gh issue view NNN
+- Task: <item in the ticket source>
+- Increment spec: <path to the spec>
 - Audit: docs/<milestone>-phase0-audit.md (if applicable)
 - Related retros: docs/lane-experience-<previous>.md
 - Files to inspect: <paths>

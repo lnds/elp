@@ -2,8 +2,8 @@
 title: "ELP: Empirical Lane Parallelism"
 subtitle: "Un método para ingeniería de software con múltiples agentes en paralelo, orquestados por humanos"
 author: "Eduardo Díaz Cortés"
-date: "2026-05-13"
-version: "0.2"
+date: "2026-11-25"
+version: "0.3"
 ---
 
 # ELP: Empirical Lane Parallelism
@@ -26,6 +26,8 @@ version: "0.2"
 2. **Brief como contrato.** Cada lane recibe un documento estructurado que define su alcance, las decisiones ya tomadas, qué hacer y qué no, y qué entregar.
 3. **Captura empírica del proceso.** Auditorías previas al código, retrospectivas obligatorias por lane y mediciones de cada compilación se conservan como conjunto de datos que alimenta a las lanes siguientes.
 
+El *qué construir* sale de una **incepción** que fija la visión y la parte en incrementos; cada incremento tiene una spec, y la spec se divide en las tareas que se entregan a las lanes.
+
 ELP no reemplaza a los métodos clásicos de desarrollo, los complementa con un patrón explícito para coordinar a varios agentes sin que el sistema se degrade en pocas semanas.
 
 El método se probó empíricamente en proyectos *greenfield*, es decir, proyectos nuevos, sin código heredado, que parten con visión de producto y diseño general definidos pero sin implementación previa. ELP se extiende de forma natural a proyectos con visión de producto y un *backlog* bien definido, aunque la práctica sostenida fuera del caso *greenfield* queda como trabajo futuro.
@@ -47,11 +49,21 @@ Los métodos del espectro actual (*vibe coding*, *Pantser*, SDD, SPDD, BMAD) no 
 
 ## 2. Definiciones
 
-**Lane.** Unidad de trabajo paralelizable, asociada a un único item del *backlog* (típicamente una tarjeta de un tablero Kanban o un *issue* de GitHub). Cada lane se materializa en un *git worktree* con su rama, su brief y su sesión `tmux`. El agente que ejecuta una lane corre en **modo autónomo** (en Claude, esto corresponde a *auto mode on*): ejecuta el brief de principio a fin sin pausas para pedir confirmación, salvo en los puntos de *STOP-and-report* declarados explícitamente.
+**Lane.** Unidad de trabajo paralelizable, asociada a una única tarea de la fuente de tickets (una tarjeta del tablero propio o un *issue* de GitHub, Shortcut, Linear o Jira). Cada lane se materializa en un *git worktree* con su rama, su brief y su sesión `tmux`. El agente que ejecuta una lane corre en **modo autónomo** (en Claude, esto corresponde a *auto mode on*): ejecuta el brief de principio a fin sin pausas para pedir confirmación, salvo en los puntos de *STOP-and-report* declarados explícitamente.
 
 **Brief.** Documento estructurado que define el contrato de la lane. Es la entrada del agente que ejecuta la lane. El nombre viene de *briefing*: antes del lanzamiento, el arquitecto y el integrador realizan un *briefing*, una puesta en común explícita, y el documento resultante es lo que recibe el agente como contrato. El brief **complementa** al item del *backlog* (que captura el *qué* funcional) con instrucciones tácticas (el *cómo* operativo para esa ejecución concreta).
 
-**Kanban.** Tablero (físico o digital) donde el arquitecto gestiona las iniciativas, hace *triage* de prioridades y decide qué se aborda en la próxima lane. ELP no prescribe la herramienta específica. En la práctica inicial se usaron *issues* de GitHub como sustituto funcional. Lo importante es que exista un lugar único y consultable donde el *qué construir* viva separado del *cómo construir* (que vive en el brief).
+**Incepción.** Fase inicial, al estilo de una *lean inception*, en la que el arquitecto define la visión del producto, qué es y qué no es, sus principios y sus incrementos (§3.1).
+
+**Constitución.** Documento con las reglas que rigen a todos los agentes del proyecto, del que se genera su configuración (`AGENTS.md`, `CLAUDE.md`, `.claude/`) (§3.4).
+
+**Incremento.** Versión del producto que sirve sola, con objetivo, alcance y criterio de terminado.
+
+**Spec.** Documento de un incremento: alcance, decisiones, preguntas abiertas, riesgos, criterio de aceptación y su partición en tareas (§3.2).
+
+**Tarea.** Unidad de una spec que se convierte en lane. Declara sus rutas, sus dependencias y las pruebas que la cierran.
+
+**Fuente de tickets.** Lugar único y consultable donde viven las tareas: un tablero propio o un sistema de tickets externo como GitHub, Shortcut, Linear o Jira (§3.5). Cumple el papel que en la versión anterior del método tenía el tablero Kanban.
 
 **Integrador.** Agente de IA con sesión interactiva que mantiene el contexto compartido con el humano, lee el estado del repositorio, escribe los briefs, lanza las lanes y monitorea su progreso. No toca código directamente.
 
@@ -69,52 +81,94 @@ Los métodos del espectro actual (*vibe coding*, *Pantser*, SDD, SPDD, BMAD) no 
 
 ## 3. Punto de partida del proyecto
 
-ELP no parte del vacío. Asume condiciones iniciales explícitas, sin las cuales el método no se sostiene. El alcance probado empíricamente es **greenfield**. La extensión a proyectos con *backlog* preexistente es natural, pero exige las mismas precondiciones.
+ELP no parte del vacío. Antes de la primera lane tiene que existir el *qué construir*: una visión escrita, una constitución con los principios fijados, incrementos con su spec y una fuente de tickets con las tareas. Si esos artefactos no existen, la **incepción** (§3.1) los produce. El alcance probado empíricamente es **greenfield**. La extensión a proyectos con *backlog* preexistente es natural, pero exige las mismas precondiciones.
 
-### 3.1 Documentación previa
+### 3.1 Incepción
 
-El proyecto arranca con un cuerpo mínimo de documentación que el integrador puede leer y que sirve como fuente compartida para escribir los briefs. Típicamente incluye:
+La incepción es la fase en que el arquitecto, con el integrador como facilitador, define el producto antes de que exista una sola lane. Sigue la forma de una *lean inception*: corta, centrada en decisiones y con artefactos escritos al final de cada paso. No produce código.
 
-- **Visión de producto.** Qué se va a construir, para quién y qué problema resuelve.
+Pasos y artefactos:
+
+1. **Visión.** Qué se va a construir, para quién y qué problema resuelve, en una frase y en un párrafo (`vision.md`).
+2. **Es, no es, hace, no hace.** Cuatro listas cortas que fijan el borde del producto. Lo que el producto *no es* y *no hace* es tan importante como lo que sí: es el primer filtro de alcance que citarán los briefs.
+3. **Personas y recorridos.** Quién usa el producto y los recorridos que el primer incremento tiene que hacer posibles.
+4. **Constitución.** Los principios arquitectónicos y de negocio, las restricciones de tiempo, las convenciones, las reglas absolutas del proyecto y los roles con sus permisos (§3.4). De ella se generan `AGENTS.md`, `CLAUDE.md` y la configuración de `.claude/`.
+5. **Incrementos.** La hoja de ruta, partida en incrementos (§3.2): cada uno es una versión del producto que sirve sola, con su objetivo y su criterio de terminado. El orden lo decide el arquitecto.
+6. **Glosario.** Los términos del dominio y cómo se relacionan.
+
+La incepción termina cuando el primer incremento tiene una spec lista para partirse en tareas. Los incrementos siguientes no necesitan spec todavía: se especifican cuando les toca, con lo aprendido en las retros de los anteriores.
+
+La incepción se repite, más corta, cuando el producto cambia de dirección o cuando se agrega un incremento que la visión no contemplaba. Cambiar la visión, como cambiar un principio, es una decisión consciente del arquitecto.
+
+### 3.2 Incrementos, specs y tareas
+
+El *qué construir* baja en tres niveles, y cada nivel produce el artefacto que consume el siguiente:
+
+- **Incremento.** Una versión del producto que sirve sola y que se puede usar y evaluar al terminar. Tiene objetivo, alcance y criterio de terminado.
+- **Spec.** Una por incremento, escrita cuando el incremento va a empezar. Fija el alcance dentro y fuera, las decisiones tomadas, las preguntas abiertas para el arquitecto, los riesgos y el criterio de aceptación. Si el incremento abarca varias zonas o descansa en una hipótesis no validada, su spec parte con una **auditoría de fase 0** (§7.1), que puede cambiarla o descartarla.
+- **Tarea.** La spec se parte en tareas. Cada tarea declara las rutas que le pertenecen, de qué tareas depende, qué pruebas la cierran y en qué versión se entrega. La partición busca tareas que no compartan archivos, para que puedan correr en paralelo (§8.1). Cada tarea vive como un item en la fuente de tickets (§3.5) y se convierte en una lane cuando sus dependencias están cerradas.
+
+El brief de una lane (§6) cita su tarea, la spec del incremento y la visión. El integrador escribe la spec y la partición junto con el arquitecto, y el arquitecto responde las preguntas abiertas antes de la primera lane del incremento.
+
+### 3.3 Documentación previa
+
+La incepción produce el cuerpo mínimo de documentación que el integrador lee y que sirve como fuente compartida para escribir los briefs. Típicamente incluye:
+
+- **Visión de producto**, con sus listas de es, no es, hace y no hace.
 - **Diseño general o arquitectura objetivo.** Componentes principales, lenguaje, plataforma de ejecución, decisiones tecnológicas.
 - **Ejemplos y prototipos.** Fragmentos de la sintaxis objetivo, maquetas de interfaz, un *spike* sobre una pieza crítica, repositorios de referencia.
 - **Glosario o modelo de dominio.** Términos del problema y cómo se relacionan entre sí.
+- **Constitución** (§3.4), con la configuración de agentes generada desde ella.
+- **Incrementos**, con la spec del que está en curso.
 
 La calidad de los briefs es función directa de esta documentación. Sin una visión escrita, el integrador inventa el alcance. Sin un diseño general, las lanes derivan en direcciones incompatibles.
 
-### 3.2 Principios fijados
+### 3.4 Constitución del proyecto
 
-Antes de la primera lane se establecen, idealmente por escrito en el repositorio (`docs/principles.md` o equivalente):
+La **constitución** es el documento que reúne las reglas que rigen a todos los agentes del proyecto (`docs/constitution.md` o equivalente). La incepción escribe su primera versión, y desde ella se **genera** la configuración de cada agente. No se mantiene a mano en varios lugares.
+
+Contiene:
 
 - **Principios arquitectónicos.** Invariantes que ninguna lane puede romper. Por ejemplo, *"selfhost byte-identical en cada PR"*, *"sin dependencias de ejecución en X"*, *"toda función observable debe estar instrumentada"*.
 - **Principios de negocio** (cuando aplican). Qué prioriza el producto en caso de compensación. Por ejemplo, *"latencia sobre rendimiento"*, *"compatibilidad heredada sobre velocidad de lanzamiento"*.
 - **Restricciones de tiempo.** Metas y fechas de lanzamiento, hoja de ruta de versiones, ventanas de congelamiento e hitos externos comprometidos.
+- **Convenciones.** Formato de *commits* y versionado, estilo de código y de comentarios, idioma del repositorio, estructura de las pruebas y cómo se corren.
+- **Reglas absolutas del proyecto.** Las de §9 más las propias: qué archivos no se tocan, qué acciones necesitan autorización, qué datos nunca se leen ni se escriben.
+- **Roles y permisos.** Qué agentes participan (integrador y especialistas), qué puede hacer cada uno, qué herramientas y comandos tiene permitidos y cuáles le están negados.
+- **Herramientas y entorno.** Versiones fijadas de las herramientas, cómo se compila y se prueba, el aislamiento que deben respetar las pruebas.
 
-Los principios funcionan como axiomas del flujo. El brief los cita, no los discute de nuevo. Cambiar un principio es una decisión consciente del arquitecto, no algo que una lane pueda hacer al pasar.
+De la constitución salen los archivos que cada herramienta de agentes lee al arrancar: `AGENTS.md`, `CLAUDE.md`, los archivos de `.claude/` (permisos en `settings.json`, definiciones de agentes, *skills* y *hooks*) y sus equivalentes en otras herramientas. Son derivados. Cambiar una regla es cambiar la constitución y volver a generarlos; editarlos directamente hace que diverjan.
 
-### 3.3 Backlog gestionado en Kanban
+Las reglas de la constitución funcionan como axiomas del flujo. El brief las cita, no las discute de nuevo. Cambiar la constitución es una decisión consciente del arquitecto, no algo que una lane pueda hacer al pasar. Cuando una retro muestra que falta una regla, el hallazgo se convierte en una propuesta de cambio a la constitución que el arquitecto acepta o rechaza.
 
-El *qué construir* vive en un **tablero Kanban** que el arquitecto usa para gestionar las iniciativas y hacer el *triage* de qué se aborda a continuación. ELP no prescribe la herramienta concreta. Puede ser un tablero dedicado (Linear, Jira, Trello, GitHub Projects) o el conjunto de *issues* de GitHub como sustituto funcional (la implementación inicial de ELP usó este último).
+### 3.5 Fuente de tickets
 
-Lo importante es que el tablero cumpla tres funciones:
+Las tareas viven en una **fuente de tickets**: un lugar único y consultable donde el *qué construir* queda separado del *cómo construir*, que vive en el brief. La fuente es una opción del proyecto, independiente de si es *greenfield* o no:
 
-1. **Inventario.** Cada item es una unidad candidata a convertirse en lane.
+- **Un tablero propio** de la herramienta que orquesta las lanes, sin servicio externo.
+- **Un sistema de tickets externo:** GitHub (*issues* y *Projects*), Shortcut, Linear o Jira, entre otros. Un proyecto con *backlog* preexistente normalmente usa el que ya tiene, y ELP se conecta a él en vez de reemplazarlo.
+
+Cualquiera sea la fuente, cumple cuatro funciones:
+
+1. **Inventario.** Cada item es una tarea candidata a convertirse en lane.
 2. **Priorización.** El arquitecto ordena, agrupa y descarta items. El integrador lee ese orden.
-3. **Trazabilidad.** Cada brief, retro y PR referencia al item del Kanban del que proviene.
+3. **Estado.** El item refleja dónde está su lane: lista, en curso, detenida en un *STOP-and-report*, en revisión o integrada. Con una fuente externa, el estado se sincroniza en los dos sentidos.
+4. **Trazabilidad.** Cada brief, retro y PR referencia el item del que proviene, y el item enlaza su spec e incremento.
 
-El brief **complementa** al item del Kanban. El item captura el *qué* funcional, con el detalle que el arquitecto considere necesario, y el brief añade el *cómo* táctico (decisiones fijadas, archivos a tocar, alcance explícito) como resultado del *briefing* entre arquitecto, integrador y agente lane.
+El brief **complementa** al item. El item captura el *qué* funcional, con el detalle que el arquitecto considere necesario, y el brief añade el *cómo* táctico (decisiones fijadas, archivos a tocar, alcance explícito) como resultado del *briefing* entre arquitecto, integrador y agente lane.
 
-### 3.4 Greenfield versus proyectos con backlog preexistente
+### 3.6 Greenfield versus proyectos con backlog preexistente
 
 | Dimensión | Greenfield (probado) | Con backlog preexistente (extensión natural) |
 |---|---|---|
 | Código de partida | ninguno o *spike* inicial | base existente con convenciones |
+| Incepción | completa, antes de la primera lane | de explicitación: se escribe la visión y los principios que el código ya implica, y se definen los incrementos siguientes |
 | Visión de producto | recién escrita | madura, posiblemente versionada |
 | Principios arquitectónicos | se establecen al inicio | se documentan extrayéndolos del código |
-| Tablero Kanban | nuevo, se va llenando | preexistente, con deuda y prioridades dadas |
+| Fuente de tickets | propia o externa, nueva | normalmente el sistema que el proyecto ya usa, con su deuda y sus prioridades |
 | Riesgo principal | derivar sin guías | imponer ELP sobre un flujo que ya funciona |
 
-La extensión a proyectos que no son *greenfield* requiere un paso previo: **explicitar lo que está implícito** (principios, convenciones, contratos no escritos) para que los briefs los puedan citar.
+La extensión a proyectos que no son *greenfield* requiere un paso previo: **explicitar lo que está implícito** (principios, convenciones, contratos no escritos) para que los briefs los puedan citar. Esa explicitación es la incepción de un proyecto existente.
 
 ---
 
@@ -126,6 +180,7 @@ ELP define tres roles con responsabilidades claras y no superpuestas.
 
 Responsabilidades:
 
+- Conducir la incepción: visión, qué es y qué no es, principios e incrementos (§3.1), y responder las preguntas abiertas de cada spec.
 - Decidir el alcance de cada hito y el orden de ejecución entre lanes.
 - Aprobar o rechazar los PRs, o habilitar la integración automática bajo ciertas condiciones.
 - Autorizar de forma explícita las acciones irreversibles (*force push*, limpieza destructiva, *push* a *main*).
@@ -142,6 +197,7 @@ Lo que **no** hace habitualmente:
 
 Responsabilidades:
 
+- Facilitar la incepción y escribir, con el arquitecto, la spec de cada incremento y su partición en tareas (§3.2).
 - Mantener el contexto compartido del proyecto, leyendo el estado del repositorio (*issues*, PRs, retros previas, auditorías).
 - Escribir briefs detallados antes de lanzar cada lane.
 - Lanzar a los agentes lane en sesiones `tmux` separadas, cada una con su *worktree*.
@@ -236,15 +292,15 @@ Una a tres frases. Qué se entrega y por qué importa ahora. Idealmente cita el 
 
 - Repositorio y rama (siempre `issue-NNN-descr` desde el `main` actual).
 - Verificación esperada (por ejemplo, `git log --oneline -5 origin/main`).
-- Reglas fijadas del proyecto (`CLAUDE.md`, archivos que no se tocan).
-- Principios arquitectónicos y de negocio aplicables (ver §3.2).
+- La constitución del proyecto y la configuración generada desde ella (`AGENTS.md`, `CLAUDE.md`, archivos que no se tocan).
+- Principios arquitectónicos y de negocio aplicables (ver §3.4).
 - Lanes paralelas en ejecución, para anticipar conflictos.
 
 ### 6.3 Lectura previa
 
 Lista de archivos que el agente debe leer antes de escribir código:
 
-- El item del *backlog* (*issue* o tarjeta Kanban) completo.
+- La tarea en la fuente de tickets, completa, y la spec del incremento al que pertenece.
 - La auditoría o el documento de diseño relevante, cuando exista.
 - Retros de lanes anteriores que comparten contexto.
 - Los archivos específicos del código que la lane va a tocar.
@@ -362,7 +418,7 @@ Cuando un agente identifica un vacío fuera del alcance, el flujo es:
 
 1. Lo documenta en la sección de *puntos de fricción* de la retro.
 2. **NO lo arregla.** *STOP-and-report*.
-3. El integrador decide si crear un nuevo item en el Kanban (*issue* o tarjeta) ahora.
+3. El integrador decide si crear ahora una nueva tarea en la fuente de tickets.
 4. Si se crea, el cuerpo del nuevo item cita la retro como fuente.
 
 Cada vacío nuevo es **su propia lane**. Esto evita que una lane se convierta en una cadena infinita de trabajo accesorio.
@@ -430,7 +486,7 @@ Reglas no negociables que aplican a todos los actores del flujo:
 6. **Auditorías de fase 0** para hitos grandes (más de un PR, hipótesis no validada, varias zonas afectadas).
 7. **Honestidad sobre optimismo.** Reportar lo medido, no lo proyectado.
 8. **Briefs detallados.** Un brief escueto produce un agente perdido.
-9. **Los principios fijados no se discuten dentro de una lane** (§3.2). Cambiar un principio es una decisión consciente del arquitecto.
+9. **La constitución no se discute dentro de una lane** (§3.4). Cambiar un principio es una decisión consciente del arquitecto.
 
 ---
 
@@ -451,12 +507,12 @@ Patrones documentados como problemáticos que ELP evita de forma explícita:
 ### 11.1 ELP encaja cuando
 
 - El proyecto va a durar meses, no días.
-- Se cumplen las **precondiciones de §3**: visión y diseño general escritos, principios arquitectónicos fijados, restricciones temporales claras, y un Kanban (o equivalente) gestionado.
+- Se cumplen las **precondiciones de §3**: visión y diseño general escritos (o una incepción que los produzca), una constitución con los principios fijados, restricciones temporales claras, incrementos con su spec y una fuente de tickets gestionada.
 - Hay alcance para varios PRs en paralelo, sobre zonas ortogonales del sistema.
 - Hay valor en conservar el aprendizaje entre lanes.
 - El arquitecto puede dedicar tiempo a escribir briefs.
 
-El método se probó en proyectos *greenfield*. Su extensión a proyectos con *backlog* preexistente requiere primero explicitar lo implícito (principios, convenciones, contratos no escritos) para que los briefs los puedan citar (§3.4).
+El método se probó en proyectos *greenfield*. Su extensión a proyectos con *backlog* preexistente requiere primero explicitar lo implícito (principios, convenciones, contratos no escritos) para que los briefs los puedan citar (§3.6).
 
 ### 11.2 ELP NO encaja cuando
 
@@ -464,7 +520,7 @@ El método se probó en proyectos *greenfield*. Su extensión a proyectos con *b
 - Es un arreglo urgente en producción. La cadencia de PRs en paralelo no aplica.
 - El equipo no tiene pruebas ni CI maduros. ELP **amplifica** lo que ya existe. Sin una tubería sólida, amplifica el caos.
 - El arquitecto no puede dedicar entre 10 y 20 minutos por brief. La calidad del brief es el techo de la calidad de la lane.
-- No existe una visión de producto ni un diseño general previo. ELP no inventa el *qué construir*, lo orquesta.
+- Nadie está dispuesto a hacer la incepción. ELP no inventa el *qué construir*: la incepción (§3.1) lo produce con el arquitecto, y sin ella no hay de dónde salgan los briefs.
 
 ---
 
@@ -479,7 +535,7 @@ BMAD divide por **especialidad funcional**, con 12 o más agentes especialistas 
 | División del trabajo | por especialidad | por unidad paralelizable |
 | Topología | secuencial por fases, con colaboración multi-agente dentro de la sesión (*party mode*) | varias lanes paralelas e independientes, en sesiones aisladas |
 | Artefacto central | PRD, documento de arquitectura, historias de usuario | brief y retro por lane |
-| Fuente del *qué construir* | PRD generado por el agente jefe de producto | items del *backlog* gestionado en Kanban |
+| Fuente del *qué construir* | PRD generado por el agente jefe de producto | incepción, specs por incremento y tareas en la fuente de tickets |
 | Captura del proceso | parcial | persistente (auditorías, retros y TSV) |
 | Aislamiento de cambios | una rama, dentro del IDE | un *worktree* y una sesión `tmux` por lane |
 
@@ -642,11 +698,12 @@ Métodos y referencias relacionadas:
 ## Contexto
 - Repositorio: <repo>, rama: issue-NNN-<descr>
 - Verificación: git log --oneline -5 origin/main
-- Reglas fijadas del proyecto: CLAUDE.md
+- Constitución: docs/constitution.md (y AGENTS.md / CLAUDE.md generados)
 - Lanes paralelas en ejecución: [lista]
 
 ## Lectura previa
-- Issue: gh issue view NNN
+- Tarea: <item en la fuente de tickets>
+- Spec del incremento: <ruta de la spec>
 - Auditoría: docs/<hito>-phase0-audit.md (si aplica)
 - Retros relacionadas: docs/lane-experience-<previo>.md
 - Archivos a inspeccionar: <rutas>
