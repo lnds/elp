@@ -3,7 +3,7 @@ title: "ELP: Empirical Lane Parallelism"
 subtitle: "Un método para ingeniería de software con múltiples agentes en paralelo, orquestados por humanos"
 author: "Eduardo Díaz Cortés"
 date: "2026-11-25"
-version: "0.3"
+version: "0.3.1"
 ---
 
 # ELP: Empirical Lane Parallelism
@@ -24,7 +24,7 @@ version: "0.3"
 
 1. **Lanes paralelas.** Cada unidad de trabajo se ejecuta como una sesión aislada: un *git worktree*, una rama propia, una sesión `tmux` propia. Varias lanes corren en paralelo.
 2. **Brief como contrato.** Cada lane recibe un documento estructurado que define su alcance, las decisiones ya tomadas, qué hacer y qué no, y qué entregar.
-3. **Captura empírica del proceso.** Auditorías previas al código, retrospectivas obligatorias por lane y mediciones de cada compilación se conservan como conjunto de datos que alimenta a las lanes siguientes.
+3. **Captura empírica del proceso.** Auditorías previas al código, un reporte de cierre por lane (con retrospectiva cuando el proyecto o el brief la piden) y mediciones de cada compilación se conservan como conjunto de datos que alimenta a las lanes siguientes.
 
 El *qué construir* sale de una **incepción** que fija la visión y la parte en incrementos; cada incremento tiene una spec, y la spec se divide en las tareas que se entregan a las lanes.
 
@@ -71,7 +71,9 @@ Los métodos del espectro actual (*vibe coding*, *Pantser*, SDD, SPDD, BMAD) no 
 
 **Auditoría (*Phase 0*).** Lane puramente documental que valida la premisa de un hito con datos antes de escribir código. Puede descartar la propuesta completa.
 
-**Lane retro.** Documento que cada lane escribe **antes** de abrir el PR, con métricas, errores encontrados, ambigüedades de la especificación y puntos de fricción.
+**Reporte de cierre.** Mensaje final de cada lane: *commits*, lo construido, desvíos del brief y su razón, evidencia de pruebas y hallazgos fuera de alcance. Es obligatorio.
+
+**Lane retro.** Documento opcional que una lane escribe **antes** de abrir el PR cuando la constitución o el brief lo piden, con métricas, errores encontrados, ambigüedades de la especificación y puntos de fricción (§7.2).
 
 **TSV de compilaciones.** Archivo separado por tabuladores donde cada invocación a *build* o *test* queda registrada con marca de tiempo, comando, resultado y duración.
 
@@ -96,7 +98,7 @@ Pasos y artefactos:
 5. **Incrementos.** La hoja de ruta, partida en incrementos (§3.2): cada uno es una versión del producto que sirve sola, con su objetivo y su criterio de terminado. El orden lo decide el arquitecto.
 6. **Glosario.** Los términos del dominio y cómo se relacionan.
 
-La incepción termina cuando el primer incremento tiene una spec lista para partirse en tareas. Los incrementos siguientes no necesitan spec todavía: se especifican cuando les toca, con lo aprendido en las retros de los anteriores.
+La incepción termina cuando el primer incremento tiene una spec lista para partirse en tareas. Los incrementos siguientes no necesitan spec todavía: se especifican cuando les toca, con lo aprendido en los reportes y retros de los anteriores.
 
 La incepción se repite, más corta, cuando el producto cambia de dirección o cuando se agrega un incremento que la visión no contemplaba. Cambiar la visión, como cambiar un principio, es una decisión consciente del arquitecto.
 
@@ -136,10 +138,11 @@ Contiene:
 - **Reglas absolutas del proyecto.** Las de §9 más las propias: qué archivos no se tocan, qué acciones necesitan autorización, qué datos nunca se leen ni se escriben.
 - **Roles y permisos.** Qué agentes participan (integrador y especialistas), qué puede hacer cada uno, qué herramientas y comandos tiene permitidos y cuáles le están negados.
 - **Herramientas y entorno.** Versiones fijadas de las herramientas, cómo se compila y se prueba, el aislamiento que deben respetar las pruebas.
+- **Retros.** Si las lanes escriben retro siempre, nunca o solo cuando el brief la pide (§7.2).
 
 De la constitución salen los archivos que cada herramienta de agentes lee al arrancar: `AGENTS.md`, `CLAUDE.md`, los archivos de `.claude/` (permisos en `settings.json`, definiciones de agentes, *skills* y *hooks*) y sus equivalentes en otras herramientas. Son derivados. Cambiar una regla es cambiar la constitución y volver a generarlos; editarlos directamente hace que diverjan.
 
-Las reglas de la constitución funcionan como axiomas del flujo. El brief las cita, no las discute de nuevo. Cambiar la constitución es una decisión consciente del arquitecto, no algo que una lane pueda hacer al pasar. Cuando una retro muestra que falta una regla, el hallazgo se convierte en una propuesta de cambio a la constitución que el arquitecto acepta o rechaza.
+Las reglas de la constitución funcionan como axiomas del flujo. El brief las cita, no las discute de nuevo. Cambiar la constitución es una decisión consciente del arquitecto, no algo que una lane pueda hacer al pasar. Cuando un reporte de cierre o una retro muestra que falta una regla, el hallazgo se convierte en una propuesta de cambio a la constitución que el arquitecto acepta o rechaza.
 
 ### 3.5 Fuente de tickets
 
@@ -191,7 +194,7 @@ Lo que **no** hace habitualmente:
 
 - Escribir código línea por línea.
 - Volver a discutir decisiones ya fijadas en los briefs.
-- Aprobar PRs sin que la retro de la lane esté escrita.
+- Aprobar PRs sin el reporte de cierre de la lane, ni sin su retro cuando se pidió.
 
 ### 4.2 Integrador (agente de IA, sesión interactiva)
 
@@ -220,7 +223,7 @@ Responsabilidades:
 
 - Recibir un brief al arrancar y leerlo completo antes de actuar.
 - Trabajar en su *worktree* aislado, sobre su propia rama.
-- Ejecutar el flujo *explorar, diagnosticar, implementar, validar, escribir la retro, hacer commit, push y abrir el PR* sin pausas para pedir confirmación.
+- Ejecutar el flujo *explorar, diagnosticar, implementar, validar, escribir el reporte de cierre (y la retro, si se pidió), hacer commit, push y abrir el PR* sin pausas para pedir confirmación.
 - Habilitar la integración automática cuando se espera que el CI termine en verde.
 - Hacer ***STOP-and-report*** ante ambigüedades de diseño que excedan su brief.
 
@@ -341,7 +344,8 @@ Lo que NO se hace es tan importante como lo que SÍ. El modelo está entrenado p
 ### 6.8 Instrumentación (obligatoria)
 
 - Registro de las compilaciones en formato TSV.
-- Documento de retro en `docs/lane-experience-<lane>.md` con secciones fijas (ver §7.2).
+- Reporte de cierre al terminar.
+- Retro en `docs/lane-experience-<lane>.md` con secciones fijas, cuando la constitución o el brief la piden (ver §7.2).
 
 ---
 
@@ -366,7 +370,9 @@ Estructura de la auditoría (`docs/<hito>-phase0-audit.md`):
 
 ### 7.2 Retros de lane
 
-Cada lane escribe `docs/lane-experience-<lane>.md` **antes** del PR. **Sin retro, no hay PR.** Estructura fija:
+Toda lane termina con un **reporte de cierre**: *commits*, lo construido, desvíos del brief y su razón, evidencia de pruebas y hallazgos fuera de alcance. Sin reporte de cierre, no hay PR.
+
+La retro es **opcional**. La constitución fija la regla del proyecto (siempre, nunca o a pedido), y el brief puede pedirla para una lane concreta: la primera de una zona nueva, una auditoría, una lane que se detuvo o falló, o una cuyo aprendizaje se quiere conservar. Cuando se pide, la lane escribe `docs/lane-experience-<lane>.md` **antes** del PR, con estructura fija:
 
 - **Métricas objetivas.** Marcas de tiempo de inicio y fin, conteos de invocaciones a *build* y *test*.
 - **Inventario de cambios.** Archivos modificados, líneas agregadas y borradas, sitios migrados.
@@ -394,7 +400,7 @@ echo -e "timestamp\tcmd\toutcome\telapsed_s" \
     > /tmp/lane-${LANE}-builds.tsv
 ```
 
-Cada `make` se registra como una línea TSV. Al cerrar la lane, ese contenido se agrega a la retro.
+Cada `make` se registra como una línea TSV. Al cerrar la lane, ese contenido se agrega al reporte de cierre o a la retro.
 
 El TSV captura:
 
@@ -416,10 +422,10 @@ Esto no infla la métrica. Reporta lo medido, no lo proyectado. La cultura es ve
 
 Cuando un agente identifica un vacío fuera del alcance, el flujo es:
 
-1. Lo documenta en la sección de *puntos de fricción* de la retro.
+1. Lo documenta en su reporte de cierre, o en los *puntos de fricción* de la retro si la hay.
 2. **NO lo arregla.** *STOP-and-report*.
 3. El integrador decide si crear ahora una nueva tarea en la fuente de tickets.
-4. Si se crea, el cuerpo del nuevo item cita la retro como fuente.
+4. Si se crea, el cuerpo del nuevo item cita el reporte o la retro como fuente.
 
 Cada vacío nuevo es **su propia lane**. Esto evita que una lane se convierta en una cadena infinita de trabajo accesorio.
 
@@ -482,7 +488,7 @@ Reglas no negociables que aplican a todos los actores del flujo:
 2. **No hacer push directo a `main`**. Siempre PR e integración automática.
 3. **Sin autorización explícita, no `worktree remove` ni `branch -D`.**
 4. **No comprometer el trabajo del usuario.** Investigar antes de borrar.
-5. **Retros obligatorias** por cada lane.
+5. **Reporte de cierre** en cada lane; retro cuando la constitución o el brief la piden.
 6. **Auditorías de fase 0** para hitos grandes (más de un PR, hipótesis no validada, varias zonas afectadas).
 7. **Honestidad sobre optimismo.** Reportar lo medido, no lo proyectado.
 8. **Briefs detallados.** Un brief escueto produce un agente perdido.
@@ -534,7 +540,7 @@ BMAD divide por **especialidad funcional**, con 12 o más agentes especialistas 
 |---|---|---|
 | División del trabajo | por especialidad | por unidad paralelizable |
 | Topología | secuencial por fases, con colaboración multi-agente dentro de la sesión (*party mode*) | varias lanes paralelas e independientes, en sesiones aisladas |
-| Artefacto central | PRD, documento de arquitectura, historias de usuario | brief y retro por lane |
+| Artefacto central | PRD, documento de arquitectura, historias de usuario | brief y reporte de cierre por lane, retro opcional |
 | Fuente del *qué construir* | PRD generado por el agente jefe de producto | incepción, specs por incremento y tareas en la fuente de tickets |
 | Captura del proceso | parcial | persistente (auditorías, retros y TSV) |
 | Aislamiento de cambios | una rama, dentro del IDE | un *worktree* y una sesión `tmux` por lane |
@@ -736,7 +742,8 @@ STOP-and-report si:
 
 ## Instrumentación
 - TSV de compilaciones en /tmp/lane-${LANE}-builds.tsv.
-- Retro en docs/lane-experience-issue-NNN-<descr>.md (secciones obligatorias).
+- Reporte de cierre: commits, lo construido, desvíos, evidencia de pruebas.
+- Retro en docs/lane-experience-issue-NNN-<descr>.md (solo si se pide).
 ```
 
 ---

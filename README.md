@@ -27,7 +27,7 @@ The method has been empirically validated on *greenfield* projects. It extends n
 
 ## Status
 
-Version 0.3. Adds the inception phase (vision, what the product is and is not, increments, a spec per increment split into tasks), the project constitution from which the agents' configuration is generated (AGENTS.md, CLAUDE.md, .claude/), and the ticket source: a board of its own or an external system such as GitHub, Shortcut, Linear or Jira, for greenfield and brownfield projects alike.
+Version 0.3.1. Lane retros are optional (the constitution or the brief asks for them); every lane ends with a closing report. Version 0.3 Adds the inception phase (vision, what the product is and is not, increments, a spec per increment split into tasks), the project constitution from which the agents' configuration is generated (AGENTS.md, CLAUDE.md, .claude/), and the ticket source: a board of its own or an external system such as GitHub, Shortcut, Linear or Jira, for greenfield and brownfield projects alike.
 
 The method was formalized from accumulated practice in long-duration projects with multiple AI agents working in parallel. Section 14 of the document presents an empirical case study: a self-hosted functional language with algebraic effects, built in 14 days with 868 commits and 144 integrated PRs.
 

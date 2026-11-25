@@ -3,7 +3,7 @@ title: "ELP: Empirical Lane Parallelism"
 subtitle: "A method for software engineering with multiple agents in parallel, orchestrated by humans"
 author: "Eduardo Díaz Cortés"
 date: "2026-11-25"
-version: "0.3"
+version: "0.3.1"
 ---
 
 # ELP: Empirical Lane Parallelism
@@ -24,7 +24,7 @@ version: "0.3"
 
 1. **Parallel lanes.** Each unit of work runs as an isolated session: a *git worktree*, its own branch, its own `tmux` session. Several lanes run in parallel.
 2. **Brief as contract.** Each lane receives a structured document defining its scope, the decisions already made, what to do and what not to do, and what to deliver.
-3. **Empirical capture of the process.** Pre-code audits, mandatory per-lane retrospectives, and per-build measurements are kept as a dataset that feeds the next lanes.
+3. **Empirical capture of the process.** Pre-code audits, a closing report per lane (with a retrospective when the project or the brief asks for one), and per-build measurements are kept as a dataset that feeds the next lanes.
 
 The *what to build* comes from an **inception** that pins the vision and splits it into increments; each increment has a spec, and the spec is divided into the tasks handed to the lanes.
 
@@ -71,7 +71,9 @@ The methods of the current spectrum (*vibe coding*, *Pantser*, SDD, SPDD, BMAD) 
 
 **Audit (*Phase 0*).** A purely documentary lane that validates the premise of a milestone with data before any code is written. It can discard the entire proposal.
 
-**Lane retro.** A document that each lane writes **before** opening the PR, with metrics, errors found, specification ambiguities, and friction points.
+**Closing report.** Each lane's final message: commits, what was built, deviations from the brief and why, test evidence, and out-of-scope findings. It is mandatory.
+
+**Lane retro.** An optional document a lane writes **before** opening the PR when the constitution or the brief asks for it, with metrics, errors found, specification ambiguities, and friction points (§7.2).
 
 **Build TSV.** A tab-separated file where every *build* or *test* invocation is logged with timestamp, command, outcome, and elapsed time.
 
@@ -96,7 +98,7 @@ Steps and artifacts:
 5. **Increments.** The roadmap, split into increments (§3.2): each one is a version of the product that is useful on its own, with its goal and its definition of done. The architect decides the order.
 6. **Glossary.** The domain terms and how they relate.
 
-Inception ends when the first increment has a spec ready to be split into tasks. Later increments need no spec yet: they are specified when their turn comes, with what the retros of the earlier ones taught.
+Inception ends when the first increment has a spec ready to be split into tasks. Later increments need no spec yet: they are specified when their turn comes, with what the reports and retros of the earlier ones taught.
 
 Inception is repeated, shorter, when the product changes direction or when an increment the vision did not foresee is added. Changing the vision, like changing a principle, is a conscious decision of the architect.
 
@@ -136,10 +138,11 @@ It contains:
 - **The project's absolute rules.** Those of §9 plus its own: which files are not touched, which actions need authorization, which data is never read or written.
 - **Roles and permissions.** Which agents take part (integrator and specialists), what each one may do, which tools and commands it is allowed and which are denied.
 - **Tools and environment.** Pinned tool versions, how to build and test, the isolation tests must respect.
+- **Retros.** Whether lanes write a retro always, never, or only when the brief asks (§7.2).
 
 From the constitution come the files each agent tool reads on start: `AGENTS.md`, `CLAUDE.md`, the files under `.claude/` (permissions in `settings.json`, agent definitions, *skills* and *hooks*), and their equivalents in other tools. They are derived. Changing a rule means changing the constitution and generating them again; editing them directly makes them diverge.
 
-The constitution's rules act as axioms of the flow. The brief cites them, it does not re-discuss them. Changing the constitution is a conscious decision of the architect, not something a lane can do in passing. When a retro shows that a rule is missing, the finding becomes a proposed change to the constitution that the architect accepts or rejects.
+The constitution's rules act as axioms of the flow. The brief cites them, it does not re-discuss them. Changing the constitution is a conscious decision of the architect, not something a lane can do in passing. When a closing report or a retro shows that a rule is missing, the finding becomes a proposed change to the constitution that the architect accepts or rejects.
 
 ### 3.5 Ticket source
 
@@ -191,7 +194,7 @@ What the architect typically **does not** do:
 
 - Write code line by line.
 - Re-discuss decisions already pinned in the briefs.
-- Approve PRs without the lane retro being written.
+- Approve PRs without the lane's closing report, or without its retro when one was asked for.
 
 ### 4.2 Integrator (AI agent, interactive session)
 
@@ -220,7 +223,7 @@ Responsibilities:
 
 - Receive a brief at startup and read it in full before acting.
 - Work in its isolated *worktree*, on its own branch.
-- Execute the flow *explore, diagnose, implement, validate, write the retro, commit, push, and open the PR* without pausing for confirmation.
+- Execute the flow *explore, diagnose, implement, validate, write the closing report (and the retro, if asked), commit, push, and open the PR* without pausing for confirmation.
 - Enable automatic integration when green CI is expected.
 - Perform ***STOP-and-report*** on design ambiguities that exceed the brief.
 
@@ -341,7 +344,8 @@ What NOT to do is as important as what TO do. The model is trained to be helpful
 ### 6.8 Instrumentation (mandatory)
 
 - Build logging to TSV.
-- Retro document at `docs/lane-experience-<lane>.md` with fixed sections (see §7.2).
+- Closing report at the end.
+- Retro at `docs/lane-experience-<lane>.md` with fixed sections, when the constitution or the brief asks for it (see §7.2).
 
 ---
 
@@ -366,7 +370,9 @@ Audit structure (`docs/<milestone>-phase0-audit.md`):
 
 ### 7.2 Lane retros
 
-Each lane writes `docs/lane-experience-<lane>.md` **before** the PR. **No retro, no PR.** Fixed structure:
+Every lane ends with a **closing report**: commits, what was built, deviations from the brief and why, test evidence, and out-of-scope findings. No closing report, no PR.
+
+The retro is **optional**. The constitution sets the project's rule (always, never, or on request), and the brief can ask for one for a given lane: the first in a new area, an audit, a lane that stopped or failed, or one whose learning is worth keeping. When asked for, the lane writes `docs/lane-experience-<lane>.md` **before** the PR, with a fixed structure:
 
 - **Objective metrics.** Start and end timestamps, counts of *build* and *test* invocations.
 - **Change inventory.** Files modified, lines added and deleted, sites migrated.
@@ -394,7 +400,7 @@ echo -e "timestamp\tcmd\toutcome\telapsed_s" \
     > /tmp/lane-${LANE}-builds.tsv
 ```
 
-Each `make` is logged as a TSV line. When the lane closes, this content is appended to the retro.
+Each `make` is logged as a TSV line. When the lane closes, this content is appended to the closing report or to the retro.
 
 The TSV captures:
 
@@ -416,10 +422,10 @@ This does not inflate the metric. It reports what was measured, not what was pro
 
 When an agent identifies a gap outside scope, the flow is:
 
-1. Document it in the *friction points* section of the retro.
+1. Document it in its closing report, or in the *friction points* of the retro if there is one.
 2. **Do NOT fix it.** *STOP-and-report*.
 3. The integrator decides whether to create a new task in the ticket source now.
-4. If created, the new item's body cites the retro as source.
+4. If created, the new item's body cites the report or the retro as source.
 
 Each new gap is **its own lane**. This prevents a lane from turning into an infinite chain of incidental work.
 
@@ -482,7 +488,7 @@ Non-negotiable rules that apply to every actor in the flow:
 2. **No direct push to `main`**. Always PR with automatic integration.
 3. **Without explicit authorization, no `worktree remove`, no `branch -D`.**
 4. **Do not compromise the user's work.** Investigate before deleting.
-5. **Mandatory retros** for every lane.
+5. **A closing report** for every lane; a retro when the constitution or the brief asks for one.
 6. **Phase 0 audits** for large milestones (more than one PR, unvalidated hypothesis, several zones affected).
 7. **Honesty over optimism.** Report what was measured, not what was projected.
 8. **Detailed briefs.** A thin brief produces a lost agent.
@@ -534,7 +540,7 @@ BMAD divides by **functional specialty**, with 12+ specialist agents (product ma
 |---|---|---|
 | Division of work | by specialty | by parallelizable unit |
 | Topology | sequential by phases, with multi-agent collaboration inside the session (*party mode*) | several parallel and independent lanes, in isolated sessions |
-| Central artifact | PRD, architecture document, user stories | brief and retro per lane |
+| Central artifact | PRD, architecture document, user stories | brief and closing report per lane, optional retro |
 | Source of *what to build* | PRD produced by the product-manager agent | inception, a spec per increment, and tasks in the ticket source |
 | Process capture | partial | persistent (audits, retros, and TSV) |
 | Change isolation | one branch, inside the IDE | one *worktree* and one `tmux` session per lane |
@@ -736,7 +742,8 @@ STOP-and-report if:
 
 ## Instrumentation
 - Build TSV at /tmp/lane-${LANE}-builds.tsv.
-- Retro at docs/lane-experience-issue-NNN-<descr>.md (mandatory sections).
+- Closing report: commits, what was built, deviations, test evidence.
+- Retro at docs/lane-experience-issue-NNN-<descr>.md (only if asked).
 ```
 
 ---
